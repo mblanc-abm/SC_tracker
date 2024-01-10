@@ -26,7 +26,7 @@ def track_Scells(timesteps, fnames_p, fnames_s, rain_masks_name, rain_tracks_nam
     Parameters
     ----------
     timesteps: list of datetime objects
-        list of hourly datetimes, corresponding to the integer hours times where the IUH field is available
+        list of hourly datetimes, corresponding to the integer hours where the IUH field is available
     fnames_p : list of str
         complete paths to the 3D pressure levels files containing the wind fields, for IUH
     fnames_s : list of str
@@ -55,24 +55,50 @@ def track_Scells(timesteps, fnames_p, fnames_s, rain_masks_name, rain_tracks_nam
         times_5min = pd.to_datetime(dset['time'].values)
     # select the integer hours contained in timesteps, to subsequently select the corresponding hourly rain masks
     #time_slices = np.logical_and(times_5min.strftime("%M") == '00', np.isin(times_5min, timesteps))
-    rain_masks = rain_masks[np.isin(times_5min, timesteps)]
+    
+    #rain_masks = rain_masks[np.isin(times_5min, timesteps)] # decrease temporal resolution to match IUH hourly one
+    rain_masks = [mask for i, mask in enumerate(rain_masks) if times_5min[i] in timesteps]
+    
+    # print(times_5min)
+    # print(timesteps)
+    # print(np.isin(times_5min, timesteps))
     
     # rain tracks opening
     # with open(rain_tracks_name, "r") as read_file:
     #     dset = json.load(read_file)
     # rain_tracks = dset['cell_data'] # rain_tracks[j] contains all info about cell j
     
-    #tracking loop
-    supercells = []
+    #n_rain_cells = len(rain_tracks)
+    #all_rain_ids = [rain_masks[i]['cell_id'] for i in range(n_rain_cells)] #stores all the ids of detected the rain cells
+    active_cells = [] #in terms of supercellular activity
+    active_cells_ids = []
+    
     for i, nowdate in enumerate(timesteps):
         field = np.array(IUH(fnames_p[i], fnames_s[i]))
         labeled = label_above_threshold(field, threshold, sub_threshold, min_area)
         overlaps = find_overlaps(field, labeled, rain_masks[i], aura)
         
-        for j, SC_label in enumerate(overlaps['SC_label']):
-            supercells.append(SuperCell(overlaps['cell_id'][j], SC_label, overlaps[''][j], nowdate, overlaps['signature'][j], overlaps['area'][j], overlaps['max_val'][j], overlaps['mean_val'][j]))
+        for j, SC_id in enumerate(overlaps['cell_id']):
+            # determine the rain cell id of the supercell
+            if np.size(SC_id) > 1: # choose the biggest overlap
+                index = np.argmax(overlaps['overlap'][j])
+                rain_cell_id = SC_id[index]
+                overlap = overlaps['overlap'][j][index]
+            else:
+                rain_cell_id = SC_id
+                overlap = overlaps['overlap'][j]
+            # determine whether the rain cell is a new supercell or not
+            if rain_cell_id in active_cells_ids:
+                index = active_cells_ids.index(rain_cell_id)
+                active_cells[index].append_candidate(nowdate, overlaps['signature'][j], overlaps['area'][j], overlaps['max_val'][j], overlaps['mean_val'][j], overlap)
+            else:
+                active_cells_ids.append(rain_cell_id)
+                active_cells.append(SuperCell(rain_cell_id, nowdate, overlaps['signature'][j], overlaps['area'][j], overlaps['max_val'][j], overlaps['mean_val'][j], overlap))
+            
     
-    return supercells
+    _ = [cell.post_processing() for cell in active_cells]
+    
+    return active_cells
 
 
 
@@ -97,7 +123,6 @@ def label_local_maxima(field, threshold, min_distance=1, aura=0):
     peaks = peak_local_max(abs(field), min_distance=min_distance, threshold_abs=threshold)
     mask = np.zeros(field.shape, dtype=bool)
     mask[tuple(peaks.T)] = True
-
     # use watershed method, fills adjacent cells so they touch at watershed line
     above_threshold = abs(field) >= threshold
     markers, _ = ndimage.label(mask, structure=np.ones((3,3), dtype="int"))
@@ -203,7 +228,7 @@ def find_overlaps(field, labeled, rain_mask, aura=0, printout=False):
     aura: number of gridpoints to dilate labels (post-dilation, called after min area is invoked !), int
     
     out
-    overlaps: a set containing 7 columns assigning each supercell, classified according to its signature (RM of LM), min value, mean value, area,
+    overlaps: a set containing 6 columns assigning each supercell, classified according to its signature (RM of LM), min value, mean value, area,
               and assigned to a(several) rain cell(s) with their corresponding overlap (in gp), set
     """
     
@@ -218,7 +243,7 @@ def find_overlaps(field, labeled, rain_mask, aura=0, printout=False):
         labeled_dil = labeled
     
     #determine the overlap between supercells and rain cells
-    overlaps = {"SC_label": [], "cell_id": [], "overlap": [], "signature": [], "area": [], "max_val": [], "mean_val":[]}
+    overlaps = {"cell_id": [], "overlap": [], "signature": [], "area": [], "max_val": [], "mean_val":[]}
     
     for SC_label in labels_SC:
         ovl_matrix = np.logical_and(labeled_dil == SC_label, np.logical_not(np.isnan(rain_mask))) #use the dilated labels for overlap
@@ -233,30 +258,28 @@ def find_overlaps(field, labeled, rain_mask, aura=0, printout=False):
         
         # if the current SC overlaps with an unique rain cell, append the corresponding cell id and overlap area
         if ovl > 0 and len(corr_cell_id) == 1:
-            overlaps["cell_id"].append(corr_cell_id[0])
-            overlaps["overlap"].append(ovl)
-            overlaps["SC_label"].append(SC_label)
-            overlaps["signature"].append(sgn)
+            overlaps["cell_id"].append(int(corr_cell_id))
+            overlaps["overlap"].append(int(ovl))
+            overlaps["signature"].append(int(sgn))
             overlaps["mean_val"].append(mean_val)
             overlaps["max_val"].append(sgn*max_val)
-            overlaps["area"].append(area)
+            overlaps["area"].append(int(area))
         elif ovl > 0 and len(corr_cell_id) > 1:
             sub_ovl = [] #by construction at least one pixel of the Sc must overlap with each of the the rain cells
             for cell_id in corr_cell_id:
                 sub_ovl_matrix = np.logical_and(labeled_dil == SC_label, rain_mask == cell_id)
-                sub_ovl.append(np.count_nonzero(sub_ovl_matrix))
+                sub_ovl.append(int(np.count_nonzero(sub_ovl_matrix)))
             overlaps["cell_id"].append(corr_cell_id.tolist())
             overlaps["overlap"].append(sub_ovl) #this time the new cell_id and overlap elements are both vectors
-            overlaps["SC_label"].append(SC_label)
-            overlaps["signature"].append(sgn)
+            overlaps["signature"].append(int(sgn))
             overlaps["mean_val"].append(mean_val)
             overlaps["max_val"].append(sgn*max_val)
-            overlaps["area"].append(area)
+            overlaps["area"].append(int(area))
     
     # check that all detected supercells is assigned to a rain cell
-    missed_SC = [sc for sc in labels_SC if sc not in overlaps["SC_label"]]
-    if len(missed_SC) > 0 and printout:
-        print(str(len(missed_SC)) + " supercell(s) not assigned to an overlapping rain cell.")
+    # missed_SC = [sc for sc in labels_SC if sc not in overlaps["SC_label"]]
+    # if len(missed_SC) > 0 and printout:
+    #     print(str(len(missed_SC)) + " supercell(s) not assigned to an overlapping rain cell.")
     
     if printout:
         print(overlaps)
@@ -285,29 +308,27 @@ class SuperCell:
     supercell class with atributes for each cell
     """
 
-    def __init__(self, rain_cell_id, label, nowdate, signature, area, max_val, mean_val, overlap):
+    def __init__(self, rain_cell_id, nowdate, signature, area, max_val, mean_val, overlap):
         """
         inizialize cell object
 
         in
-        cell_id: rain cell id, int
-        label: label of supercell, int
+        cell_id: rain cell id, unique, int
         nowdate: current date, datetime
         signature: sign of the supercell, +1 or -1, int
         """
         self.rain_cell_id = rain_cell_id # ID of the rain cell the supercell was assigned to
-        self.label = [] # arbitrary label of the supercell
-        self.label.append(label)
-        self.datelist = []
+        self.datelist = [] # is a vector of length the number of integer hours the cell was assigned supercells
         self.datelist.append(nowdate)
-        self.signature = signature
+        self.signature = [] #vector of the same length as datelist on the first axis, and of the number of supercells on the second (at each time step)
+        self.signature.append(signature)
         self.area = []
         self.area.append(area)
-        self.max_val = []
+        self.max_val = [] # same
         self.max_val.append(max_val)
-        self.mean_val = []
+        self.mean_val = [] # same
         self.mean_val.append(mean_val)
-        self.overlap = [] #overlap with the rain cell at every hour
+        self.overlap = [] # overlap with the supercells (same for the size)
         self.overlap.append(overlap)
         self.min_lifespan = None
 
@@ -318,8 +339,19 @@ class SuperCell:
         used on calculations that are performed after tracking
         """
 
-        self.min_lifespan = self.datelist[-1] - self.datelist[0]
-
+        self.min_lifespan = len(np.unique(self.datelist)) - 1
+        
+    
+    def append_candidate(self, nowdate, signature, area, max_val, mean_val, overlap):
+        """
+        appends the newly detected supercell with the provided attributes to the self cell
+        """
+        self.datelist.append(nowdate)
+        self.signature.append(signature)
+        self.area.append(area)
+        self.max_val.append(max_val)
+        self.mean_val.append(mean_val)
+        self.overlap.append(overlap)
 
 
     # def append_associates(self, cells, field_static=None):
@@ -486,7 +518,8 @@ class SuperCell:
 
     #             self.label.insert(0, -1)  # nan representation
     #             self.score.insert(0, -1)  # nan representation
-    #             self.overlap.insert(0, -1)  # nan representation
+    #             self.overlap.insert(0, -1)  # na"label": "arbitrary supercell label",
+    #        n representation
     #             self.search_field.insert(0, None)
     #             self.search_vector.insert(0, None)
 
@@ -509,7 +542,6 @@ class SuperCell:
         outstr: human readable string of cell object, string
         """
         outstr = "-" * 100 + "\n"
-        outstr += f"supercell label:    {self.label}\n"
         outstr += f"date time:    {self.datelist}\n"
         outstr += f"signature:    {self.signature}\n"
         outstr += f"rain cell id:  {str(self.rain_cell_id).zfill(3)}\n"
@@ -533,14 +565,13 @@ class SuperCell:
         """
         cell_dict = {
             "rain_cell_id": self.rain_cell_id,
-            "label": self.label,
             "datelist": [str(t)[:16] for t in self.datelist],
             "signature": self.signature,
-            "area": [int(x) for x in self.area],
+            "area": self.area, #[int(x) for x in self.area],
             "max_val": self.max_val,
             "mean_val": self.mean_val,
             "overlap": self.overlap,
-            "min_lifespan": self.min_lifespan / np.timedelta64(1, "h")
+            "min_lifespan": self.min_lifespan
         }
         return cell_dict
 
@@ -615,7 +646,6 @@ def write_to_json(cells, filename):
         "data_structure": data_structure,
         "parameters": {
             "rain_cell_id": "id(s) of the rain cell(s) the supercell was assigned to",
-            "label": "arbitrary supercell label",
             "datelist": "list of datetimes for each timestep in supercell lifetime",
             "signature": "vorticity signature of the supercell (+1 for mesocyclones and -1 for mesoanticyclones)",
             "area": "area in gridpoints",

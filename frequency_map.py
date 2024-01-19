@@ -76,17 +76,15 @@ def plot_fmap(lons, lats, fmap, typ, season=False, year=None, z=0):
 
 
 # so far designed for supercell and rain types only
-def seasonal_masks_fmap(start_day, end_day, typ):
+def seasonal_masks_fmap(season, typ):
     """
-    Compute the seasonal frequency map
+    Compute the seasonal frequency map over whole domain
     
     Parameters
     ----------
-    start_day : str
-        first day of the considered period/season, YYYYMMDD
-    end_day : str
-        last day of the considered period/season, YYYYMMDD
-    typ: str
+    season : str
+        considered season, YYYY
+    typ : str
         type of the frequency map, eg "supercell", "rain", "mesocyclone"
 
     Returns
@@ -99,8 +97,8 @@ def seasonal_masks_fmap(start_day, end_day, typ):
         the desired seasonal frequency map
     """
     
-    start_day = pd.to_datetime(start_day)
-    end_day = pd.to_datetime(end_day)
+    start_day = pd.to_datetime(season + "0401")
+    end_day = pd.to_datetime(season + "0930")
     daylist = pd.date_range(start_day, end_day)
     SC_path = "/scratch/snx3000/mblanc/SDT_output/seasons/2021/"  #supercell_20210617.json
     mask_path = "/project/pr133/mblanc/cell_tracker_output/current_climate/" #cell_masks_20210920.nc
@@ -126,9 +124,6 @@ def seasonal_masks_fmap(start_day, end_day, typ):
                 SC_info = json.load(read_file)['SC_data']
             SC_ids = [SC_info[j]['rain_cell_id'] for j in range(len(SC_info))]
             rain_masks = np.where(np.isin(rain_masks, SC_ids), rain_masks, np.nan)
-            label_cbar = "number of supercell mask counts"
-        elif typ == "rain":
-            label_cbar = "number of rain cell mask counts"
             
         bin_masks = np.logical_not(np.isnan(rain_masks))
         
@@ -139,13 +134,46 @@ def seasonal_masks_fmap(start_day, end_day, typ):
     
     return lons, lats, counts
 
+
+# so far designed for supercell and rain types only
+def decadal_masks_fmap(typ):
+    """
+    Compute the decadal frequency map over whole domain
+    
+    Parameters
+    ----------
+    typ: str
+        type of the frequency map, eg "supercell", "rain", "mesocyclone"
+
+    Returns
+    -------
+    lons : 2D array
+        longitude at each gridpoint
+    lats : 2D array
+        latitude at each gridpoint
+    counts : 2D array
+        the desired seasonal frequency map
+    """
+    
+    years = ["2011", "2012", "2013", "2014", "2015", "2016", "2017", "2018", "2019", "2020", "2021"]
+    
+    for i, year in enumerate(years):
+        if i == 0:
+            lons, lats, counts = seasonal_masks_fmap(year, typ)
+        else:
+            _, _, counts2 = seasonal_masks_fmap(year, typ)
+            counts += counts2
+    
+    return lons, lats, counts
+
+
 #==================================================================================================================================================
 # MAIN
 #==================================================================================================================================================
 
-start_day = "20210401"
-end_day = "20210930"
 typ = "supercell"
-year = "2021"
-zoom = 0
+season = "2021"
+lons, lats, counts = seasonal_masks_fmap(season, typ)
 
+zoom = 0
+plot_fmap(lons, lats, counts, typ, season=True, year=season, z=zoom)

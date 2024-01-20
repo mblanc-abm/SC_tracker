@@ -13,6 +13,8 @@ import cartopy.feature as cfeature
 
 def plot_fmap(lons, lats, fmap, typ, season=False, year=None, z=0):
     """
+    Plots the desired decadal (default) or seasonal frequency map
+    
     Parameters
     ----------
     lons : 2D array
@@ -76,7 +78,7 @@ def plot_fmap(lons, lats, fmap, typ, season=False, year=None, z=0):
 
 
 # so far designed for supercell and rain types only
-def seasonal_masks_fmap(season, typ):
+def seasonal_masks_fmap(season, typ, climate):
     """
     Compute the seasonal frequency map over whole domain
     
@@ -86,6 +88,8 @@ def seasonal_masks_fmap(season, typ):
         considered season, YYYY
     typ : str
         type of the frequency map, eg "supercell", "rain", "mesocyclone"
+    climate : str
+        "current" or "future", depending on the climate you are analising
 
     Returns
     -------
@@ -100,8 +104,8 @@ def seasonal_masks_fmap(season, typ):
     start_day = pd.to_datetime(season + "0401")
     end_day = pd.to_datetime(season + "0930")
     daylist = pd.date_range(start_day, end_day)
-    SC_path = "/scratch/snx3000/mblanc/SDT_output/seasons/2021/"  #supercell_20210617.json
-    mask_path = "/project/pr133/mblanc/cell_tracker_output/current_climate/" #cell_masks_20210920.nc
+    SC_path = "/scratch/snx3000/mblanc/SDT_output/seasons/" + season + "/"  #supercell_20210617.json
+    mask_path = "/project/pr133/mblanc/cell_tracker_output/" + climate + "_climate/" #cell_masks_20210920.nc
 
     SC_files = []
     mask_files = []
@@ -136,7 +140,7 @@ def seasonal_masks_fmap(season, typ):
 
 
 # so far designed for supercell and rain types only
-def decadal_masks_fmap(typ):
+def decadal_masks_fmap(typ, climate):
     """
     Compute the decadal frequency map over whole domain
     
@@ -144,6 +148,8 @@ def decadal_masks_fmap(typ):
     ----------
     typ: str
         type of the frequency map, eg "supercell", "rain", "mesocyclone"
+    climate : str
+        "current" or "future", depending on the climate you are analising
 
     Returns
     -------
@@ -154,14 +160,18 @@ def decadal_masks_fmap(typ):
     counts : 2D array
         the desired seasonal frequency map
     """
-    
-    years = ["2011", "2012", "2013", "2014", "2015", "2016", "2017", "2018", "2019", "2020", "2021"]
+    if climate == "current":
+        years = ["2011", "2012", "2013", "2014", "2015", "2016", "2017", "2018", "2019", "2020", "2021"]
+    elif climate == "future":
+        years = ["2085", "2086", "2087", "2088", "2089", "2090", "2091", "2092", "2093", "2094", "2095"]
+    else:
+        print("error: climate wrongly specified !")
     
     for i, year in enumerate(years):
         if i == 0:
-            lons, lats, counts = seasonal_masks_fmap(year, typ)
+            lons, lats, counts = seasonal_masks_fmap(year, typ, climate)
         else:
-            _, _, counts2 = seasonal_masks_fmap(year, typ)
+            _, _, counts2 = seasonal_masks_fmap(year, typ, climate)
             counts += counts2
     
     return lons, lats, counts
@@ -171,6 +181,7 @@ def decadal_masks_fmap(typ):
 # MAIN
 #==================================================================================================================================================
 
+climate = "current"
 typ = "supercell"
 season = "2021"
 lons, lats, counts = seasonal_masks_fmap(season, typ)

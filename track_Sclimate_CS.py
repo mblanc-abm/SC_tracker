@@ -31,7 +31,7 @@ def main(outpath, day, hours, cut):
     threshold = 75
     sub_threshold = 65
     min_area = 3
-    aura = 1
+    aura = 2
     #quiet = True
 
     # make output directory
@@ -58,16 +58,16 @@ def main(outpath, day, hours, cut):
         fnames_s.append(path_s + dt.strftime("%Y%m%d%H%M%S") + ".nc")
     
     # make rain mask and tracks file names
-    rain_masks_name = "/scratch/snx3000/mblanc/cell_tracker/outfiles/cell_masks_" + day + ".nc"  
+    rain_masks_name = "/scratch/snx3000/mblanc/cell_tracker/CaseStudies/outfiles/cell_masks_" + day + ".nc"
     rain_tracks_name = "random, useless"
     
     # track supercells
     print("tracking supercells")
-    supercells = track_Scells(timesteps, fnames_p, fnames_s, rain_masks_name, rain_tracks_name, threshold, sub_threshold, min_area, aura)
+    supercells, missed_mesocyclones = track_Scells(timesteps, fnames_p, fnames_s, rain_masks_name, rain_tracks_name, threshold, sub_threshold, min_area, aura)
     
     print("writing data to file")
     outfile_json = os.path.join(outpath, "supercell_" + day + ".json")
-    _ = write_to_json(supercells, outfile_json)
+    _ = write_to_json(supercells, missed_mesocyclones, outfile_json)
 
     print("finished tracking day")
     
@@ -75,9 +75,9 @@ def main(outpath, day, hours, cut):
 
 #====================================================================================================================
 
-outpath = "/scratch/snx3000/mblanc/CS_tracker/output/"
-day = "20210713"
-hours = range(11,16)
+outpath = "/scratch/snx3000/mblanc/SDT_output/CaseStudies"
+day = "20210620"
+hours = range(13,19)
 cut = "swisscut"
 
 main(outpath, day, hours, cut)

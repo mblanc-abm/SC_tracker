@@ -13,6 +13,7 @@ output:
     supercells_YYYYMMDD.json: json files containing supercells information
 """
 
+from Scell_tracker import track_Scells, write_to_json
 #import sys
 import os
 #import argparse
@@ -20,8 +21,6 @@ import os
 import xarray as xr
 import pandas as pd
 #import numpy as np
-
-from Scell_tracker import track_Scells, write_to_json
 
 #====================================================================================================================
 
@@ -31,7 +30,7 @@ def main(outpath, start_day, end_day, climate):
     threshold = 75
     sub_threshold = 65
     min_area = 3
-    aura = 1
+    aura = 2
     
     start_day = pd.to_datetime(start_day, format="%Y%m%d")
     end_day = pd.to_datetime(end_day, format="%Y%m%d")
@@ -55,10 +54,15 @@ def main(outpath, start_day, end_day, climate):
     
         # make pressure level and surface pressure file names
         fnames_p = []
-        fnames_s = [] # !!! will need to change the paths for the future climate !!!
-        path_p = "/project/pr133/velasque/cosmo_simulations/climate_simulations/RUN_2km_cosmo6_climate/4_lm_f/output/1h_3D_plev/lffd"
-        path_s = "/project/pr133/velasque/cosmo_simulations/climate_simulations/RUN_2km_cosmo6_climate/4_lm_f/output/1h_2D/lffd"
-        for i, dt in enumerate(timesteps):
+        fnames_s = [] 
+        if climate == "current":
+            path_p = "/project/pr133/velasque/cosmo_simulations/climate_simulations/RUN_2km_cosmo6_climate/4_lm_f/output/1h_3D_plev/lffd"
+            path_s = "/project/pr133/velasque/cosmo_simulations/climate_simulations/RUN_2km_cosmo6_climate/4_lm_f/output/1h_2D/lffd"
+        else:
+            path_p = "/project/pr133/irist/scClim/RUN_2km_cosmo6_climate_PGW_MPI_HR/output/lm_f/1h_3D_plev/lffd"
+            path_s = "/project/pr133/irist/scClim/RUN_2km_cosmo6_climate_PGW_MPI_HR/output/lm_f/1h_2D/lffd"
+        
+        for dt in timesteps:
             fnames_p.append(path_p + dt.strftime("%Y%m%d%H%M%S") + "p.nc")
             fnames_s.append(path_s + dt.strftime("%Y%m%d%H%M%S") + ".nc")
         
@@ -68,11 +72,11 @@ def main(outpath, start_day, end_day, climate):
         
         # track supercells
         print("tracking supercells")
-        supercells = track_Scells(timesteps, fnames_p, fnames_s, rain_masks_name, rain_tracks_name, threshold, sub_threshold, min_area, aura)
+        supercells, missed_mesocyclones = track_Scells(timesteps, fnames_p, fnames_s, rain_masks_name, rain_tracks_name, threshold, sub_threshold, min_area, aura)
         
         print("writing data to file")
         outfile_json = os.path.join(outpath, "supercell_" + day.strftime("%Y%m%d") + ".json")
-        _ = write_to_json(supercells, outfile_json)
+        _ = write_to_json(supercells, missed_mesocyclones, outfile_json)
     
     print("finished tracking all days in queue")
     
@@ -80,8 +84,7 @@ def main(outpath, start_day, end_day, climate):
 
 #====================================================================================================================
 
-#outpath = "/scratch/snx3000/mblanc/SDT_output/seasons/2021"
-outpath = "/users/mblanc"
+outpath = "/scratch/snx3000/mblanc/SDT_output/seasons/2021"
 start_day = "20210401"
 end_day = "20210930"
 climate = "current"

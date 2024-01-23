@@ -13,7 +13,7 @@ output:
     supercells_YYYYMMDD.json: json files containing supercells information
 """
 
-from Scell_tracker import track_Scells, write_to_json
+from Scell_tracker import track_Scells, write_to_json, write_masks_to_netcdf
 #import sys
 import os
 #import argparse
@@ -52,7 +52,7 @@ def main(outpath, start_day, end_day, climate):
             times_5min = pd.to_datetime(dset['time'].values)
         timesteps = [t for t in times_5min if t.strftime("%M")=="00"]
     
-        # make pressure level and surface pressure file names
+        # make 1h_3D (pressure level), 1h_2D (surface pressure, hail amd max surface wind) files names
         fnames_p = []
         fnames_s = [] 
         if climate == "current":
@@ -68,15 +68,17 @@ def main(outpath, start_day, end_day, climate):
         
         # make rain mask and tracks file names
         rain_masks_name = mask_path  
-        rain_tracks_name = "random, useless for now"
+        rain_tracks_name = "/project/pr133/mblanc/cell_tracker_output/" + climate + "_climate/cell_tracks_" + day.strftime("%Y%m%d") + ".json"
         
         # track supercells
         print("tracking supercells")
-        supercells, missed_mesocyclones = track_Scells(timesteps, fnames_p, fnames_s, rain_masks_name, rain_tracks_name, threshold, sub_threshold, min_area, aura)
+        supercells, missed_mesocyclones, lons, lats = track_Scells(timesteps, fnames_p, fnames_s, rain_masks_name, rain_tracks_name, threshold, sub_threshold, min_area, aura)
         
         print("writing data to file")
         outfile_json = os.path.join(outpath, "supercell_" + day.strftime("%Y%m%d") + ".json")
-        _ = write_to_json(supercells, missed_mesocyclones, outfile_json)
+        outfile_nc = os.path.join(outpath, "meso_masks_" + day.strftime("%Y%m%d") + ".nc")
+        write_to_json(supercells, missed_mesocyclones, outfile_json)
+        write_masks_to_netcdf(supercells, lons, lats, outfile_nc)
     
     print("finished tracking all days in queue")
     

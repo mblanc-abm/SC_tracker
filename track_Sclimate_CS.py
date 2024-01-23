@@ -21,7 +21,7 @@ import os
 import pandas as pd
 #import numpy as np
 
-from Scell_tracker import track_Scells, write_to_json
+from Scell_tracker import track_Scells, write_to_json, write_masks_to_netcdf, SuperCell
 
 #====================================================================================================================
 
@@ -57,17 +57,20 @@ def main(outpath, day, hours, cut):
         fnames_p.append(path_p + dt.strftime("%Y%m%d%H%M%S") + "p.nc")
         fnames_s.append(path_s + dt.strftime("%Y%m%d%H%M%S") + ".nc")
     
-    # make rain mask and tracks file names
+    # make rain masks and tracks files names
     rain_masks_name = "/scratch/snx3000/mblanc/cell_tracker/CaseStudies/outfiles/cell_masks_" + day + ".nc"
-    rain_tracks_name = "random, useless"
+    rain_tracks_name = "/scratch/snx3000/mblanc/cell_tracker/CaseStudies/outfiles/cell_tracks_" + day + ".json"
     
     # track supercells
     print("tracking supercells")
-    supercells, missed_mesocyclones = track_Scells(timesteps, fnames_p, fnames_s, rain_masks_name, rain_tracks_name, threshold, sub_threshold, min_area, aura)
+    supercells, missed_mesocyclones, lons, lats = track_Scells(timesteps, fnames_p, fnames_s, rain_masks_name, rain_tracks_name, threshold, sub_threshold, min_area, aura)
     
+    #write data to output files
     print("writing data to file")
     outfile_json = os.path.join(outpath, "supercell_" + day + ".json")
-    _ = write_to_json(supercells, missed_mesocyclones, outfile_json)
+    outfile_nc = os.path.join(outpath, "meso_masks_" + day + ".nc")
+    write_to_json(supercells, missed_mesocyclones, outfile_json)
+    write_masks_to_netcdf(supercells, lons, lats, outfile_nc)
 
     print("finished tracking day")
     

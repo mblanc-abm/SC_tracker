@@ -1,7 +1,7 @@
 """
 version intended for the whole domain
-takes the date and hours of the considered case study as input
-detects and assigns supercells to existing rain cells and saves supercellls information into a json file
+takes the starting and ending dates of the considered period as inputs
+detects and assigns supercells to existing rain cells, saves supercells information into a json file sa well as mesocyclones masks into a netcdf file
 
 input:
     outpath: path to output file, str
@@ -11,6 +11,7 @@ input:
 
 output:
     supercells_YYYYMMDD.json: json files containing supercells information
+    meso_masks_YYYMMDD.nc: mesocyclones binary masks, netcdf
 """
 
 from Scell_tracker import track_Scells, write_to_json, write_masks_to_netcdf
@@ -46,25 +47,31 @@ def main(outpath, start_day, end_day, climate):
         # get the data for one day
         print("preparing data")
         
-        # make timesteps: extract hourly timesteps from 4am to 4am of the subsequent day
+        # make timesteps: extract hourly timesteps from 4am of the current day to 3am of the subsequent day
         mask_path = "/project/pr133/mblanc/cell_tracker_output/" + climate + "_climate/cell_masks_" + day.strftime("%Y%m%d") + ".nc"
         with xr.open_dataset(mask_path) as dset:
             times_5min = pd.to_datetime(dset['time'].values)
         timesteps = [t for t in times_5min if t.strftime("%M")=="00"]
     
-        # make 1h_3D (pressure level), 1h_2D (surface pressure, hail amd max surface wind) files names
+        # make 1h_3D (pressure level), 1h_2D (surface pressure and max surface wind),and 5min_2D (max hail) files names
         fnames_p = []
-        fnames_s = [] 
+        fnames_s = []
+        fnames_h = [] # might need to rename raw files (suffering from errors in naming)
         if climate == "current":
             path_p = "/project/pr133/velasque/cosmo_simulations/climate_simulations/RUN_2km_cosmo6_climate/4_lm_f/output/1h_3D_plev/lffd"
             path_s = "/project/pr133/velasque/cosmo_simulations/climate_simulations/RUN_2km_cosmo6_climate/4_lm_f/output/1h_2D/lffd"
+            path_h = "/project/pr133/velasque/cosmo_simulations/climate_simulations/RUN_2km_cosmo6_climate/4_lm_f/output/5min_2D/lffd"
         else:
             path_p = "/project/pr133/irist/scClim/RUN_2km_cosmo6_climate_PGW_MPI_HR/output/lm_f/1h_3D_plev/lffd"
             path_s = "/project/pr133/irist/scClim/RUN_2km_cosmo6_climate_PGW_MPI_HR/output/lm_f/1h_2D/lffd"
+            path_h = "/project/pr133/irist/scClim/RUN_2km_cosmo6_climate_PGW_MPI_HR/output/lm_f/5min_2D/lffd"
         
         for dt in timesteps:
             fnames_p.append(path_p + dt.strftime("%Y%m%d%H%M%S") + "p.nc")
             fnames_s.append(path_s + dt.strftime("%Y%m%d%H%M%S") + ".nc")
+        
+        for dt in times_5min:
+            fnames_h.append(path_h + dt.strftime("%Y%m%d%H%M%S") + ".nc")
         
         # make rain mask and tracks file names
         rain_masks_name = mask_path  
@@ -72,7 +79,7 @@ def main(outpath, start_day, end_day, climate):
         
         # track supercells
         print("tracking supercells")
-        supercells, missed_mesocyclones, lons, lats = track_Scells(timesteps, fnames_p, fnames_s, rain_masks_name, rain_tracks_name, threshold, sub_threshold, min_area, aura)
+        supercells, missed_mesocyclones, lons, lats = track_Scells(timesteps, fnames_p, fnames_s, rain_masks_name, rain_tracks_name, threshold, sub_threshold, min_area, aura, fnames_h)
         
         print("writing data to file")
         outfile_json = os.path.join(outpath, "supercell_" + day.strftime("%Y%m%d") + ".json")
@@ -86,9 +93,9 @@ def main(outpath, start_day, end_day, climate):
 
 #====================================================================================================================
 
-outpath = "/scratch/snx3000/mblanc/SDT_output/seasons/2021"
-start_day = "20210401"
-end_day = "20210930"
+outpath = "/scratch/snx3000/mblanc/SDT_output/seasons/2020"
+start_day = "20200401"
+end_day = "20200401"
 climate = "current"
 
 main(outpath, start_day, end_day, climate)

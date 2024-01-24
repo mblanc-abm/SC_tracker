@@ -18,7 +18,7 @@ from CaseStudies import IUH
 
 #================================================================================================================================
 #inputs
-dtstr = "20190611130000" # to be filled: full date and time of timeshot
+dtstr = "20170801210000" # to be filled: full date and time of timeshot
 cut = "largecut"
 dt = pd.to_datetime(dtstr, format="%Y%m%d%H%M%S")
 aura = 2

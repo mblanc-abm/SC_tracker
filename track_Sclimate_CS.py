@@ -1,7 +1,7 @@
 """
 version intended for the case studies
-takes the date and hours of the considered case study as input
-detects and assigns supercells to existing rain cells and saves supercellls information into a json file
+takes the date and hours of the considered case study as inputs
+detects and assigns supercells to existing rain cells, saves supercells information into a json file sa well as mesocyclones masks into a netcdf file
 
 input:
     outpath: path to output file, str
@@ -11,6 +11,7 @@ input:
 
 output:
     supercells_YYYYMMDD.json: json file containing cell tracks
+    meso_masks_YYYMMDD.nc: mesocyclones binary masks, netcdf
 """
 
 #import sys
@@ -21,7 +22,7 @@ import os
 import pandas as pd
 #import numpy as np
 
-from Scell_tracker import track_Scells, write_to_json, write_masks_to_netcdf, SuperCell
+from Scell_tracker import track_Scells, write_to_json, write_masks_to_netcdf
 
 #====================================================================================================================
 
@@ -32,7 +33,6 @@ def main(outpath, day, hours, cut):
     sub_threshold = 65
     min_area = 3
     aura = 2
-    #quiet = True
 
     # make output directory
     os.makedirs(outpath, exist_ok=True)
@@ -79,9 +79,9 @@ def main(outpath, day, hours, cut):
 #====================================================================================================================
 
 outpath = "/scratch/snx3000/mblanc/SDT_output/CaseStudies"
-day = "20210620"
-hours = range(13,19)
-cut = "swisscut"
+day = "20170801"
+hours = range(18,24)
+cut = "largecut"
 
 main(outpath, day, hours, cut)
 

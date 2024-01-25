@@ -105,3 +105,32 @@ ax3.add_feature(bodr, linestyle='-', edgecolor='k', alpha=1, linewidth=0.2)
 ax3.add_feature(ocean, linewidth=0.2)
 cbar = plt.colorbar(cont_mask, ticks=ticks_mask, orientation='horizontal', label="Cell mask")
 cbar.locator = MultipleLocator(base=5)
+
+
+#================================================================================================================================
+## test meso masks
+
+day = "20120630"
+tim = "220000" #time slice considered
+
+with xr.open_dataset("/scratch/snx3000/mblanc/SDT_output/CaseStudies/meso_masks_" + day + ".nc") as dset:
+    meso_masks = dset['meso_mask']
+    lats = dset['lat']
+    lons = dset['lon']
+    times = pd.to_datetime(dset['time'])
+
+# load geographic features
+resol = '10m'  # use data at this scale
+bodr = cfeature.NaturalEarthFeature(category='cultural', name='admin_0_boundary_lines_land', scale=resol, facecolor='none', alpha=0.5)
+ocean = cfeature.NaturalEarthFeature('physical', 'ocean', scale=resol, edgecolor='none', facecolor=cfeature.COLORS['water'])
+
+# plot
+for i, meso_mask in enumerate(meso_masks):
+    plt.figure()
+    ax = plt.axes(projection=ccrs.PlateCarree())
+    ax.add_feature(bodr, linestyle='-', edgecolor='k', alpha=1, linewidth=0.2)
+    ax.add_feature(ocean, linewidth=0.2)
+    cont = plt.pcolormesh(lons, lats, meso_mask, cmap="Blues", transform=ccrs.PlateCarree())
+    plt.colorbar(cont)
+    plt.suptitle(times[i].strftime("%d/%m/%Y %H:%M:%S"))
+

@@ -55,7 +55,7 @@ def plot_fmap(lons, lats, fmap, typ, season=False, year=None, z=0):
             cont = plt.pcolormesh(lons, lats, fmap, cmap="Reds", transform=ccrs.PlateCarree())
             figname = "season" + year + ".png"
         plt.colorbar(cont, orientation='horizontal', label="number of " + typ + " mask counts")
-        plt.title("Season " + year)
+        plt.title("Season " + year + " distribution map")
         fig.savefig(figname, dpi=300)
         
     else:
@@ -104,37 +104,64 @@ def seasonal_masks_fmap(season, typ, climate):
     start_day = pd.to_datetime(season + "0401")
     end_day = pd.to_datetime(season + "0930")
     daylist = pd.date_range(start_day, end_day)
-    SC_path = "/scratch/snx3000/mblanc/SDT_output/seasons/" + season + "/"  #supercell_20210617.json
-    mask_path = "/project/pr133/mblanc/cell_tracker_output/" + climate + "_climate/" #cell_masks_20210920.nc
-
-    SC_files = []
-    mask_files = []
-    for day in daylist:
-        SC_files.append(SC_path + "supercell_" + day.strftime("%Y%m%d") + ".json")
-        mask_files.append(mask_path + "cell_masks_" + day.strftime("%Y%m%d") + ".nc")
-
-    for i in range(len(SC_files)):
+    
+    if typ == "rain" or typ == "supercell":
         
-        # rain masks
-        with xr.open_dataset(mask_files[i]) as dset:
-            rain_masks = dset['cell_mask'] # 3D matrix
-            if i == 0:
-                lons = dset["lon"].values
-                lats = dset["lat"].values
-         
-        if typ == "supercell":
-            # SC info -> extract cell ids corresponding to supercells
-            with open(SC_files[i], "r") as read_file:
-                SC_info = json.load(read_file)['SC_data']
-            SC_ids = [SC_info[j]['rain_cell_id'] for j in range(len(SC_info))]
-            rain_masks = np.where(np.isin(rain_masks, SC_ids), rain_masks, np.nan)
+        SC_path = "/scratch/snx3000/mblanc/SDT_output/seasons/" + season + "/"  #supercell_20210617.json
+        mask_path = "/scratch/snx3000/mblanc/cell_tracker_output/" + climate + "_climate/" #cell_masks_20210920.nc
+
+        SC_files = []
+        mask_files = []
+        for day in daylist:
+            SC_files.append(SC_path + "supercell_" + day.strftime("%Y%m%d") + ".json")
+            mask_files.append(mask_path + "cell_masks_" + day.strftime("%Y%m%d") + ".nc")
+
+        for i in range(len(SC_files)):
             
-        bin_masks = np.logical_not(np.isnan(rain_masks))
+            # rain masks
+            with xr.open_dataset(mask_files[i]) as dset:
+                rain_masks = dset['cell_mask'] # 3D matrix
+                if i == 0:
+                    lons = dset["lon"].values
+                    lats = dset["lat"].values
+             
+            if typ == "supercell":
+                # SC info -> extract cell ids corresponding to supercells
+                with open(SC_files[i], "r") as read_file:
+                    SC_info = json.load(read_file)['supercell_data']
+                SC_ids = [SC_info[j]['rain_cell_id'] for j in range(len(SC_info))]
+                rain_masks = np.where(np.isin(rain_masks, SC_ids), rain_masks, np.nan)
+                
+            bin_masks = np.logical_not(np.isnan(rain_masks))
+            
+            if i == 0:
+                counts = np.count_nonzero(bin_masks, axis=0)
+            else:
+                counts += np.count_nonzero(bin_masks, axis=0)
+                
+    elif typ == "mesocyclone":
         
-        if i == 0:
-            counts = np.count_nonzero(bin_masks, axis=0)
-        else:
-            counts += np.count_nonzero(bin_masks, axis=0)
+        meso_path = "/scratch/snx3000/mblanc/SDT_output/seasons/" + season + "/"  # meso_masks_20170801.nc
+        meso_masks_files = []
+        for day in daylist:
+            meso_masks_files.append(meso_path + "meso_masks_" + day.strftime("%Y%m%d") + ".nc")
+        
+        for i, meso_masks_file in enumerate(meso_masks_files):
+            
+            with xr.open_dataset(meso_masks_file) as dset:
+                meso_masks = dset['meso_mask']
+                if i == 0:
+                    lons = dset["lon"].values
+                    lats = dset["lat"].values
+            
+            if i == 0:
+                counts = np.count_nonzero(meso_masks, axis=0)
+            else:
+                counts += np.count_nonzero(meso_masks, axis=0)
+    
+    else:
+        print("error: type is not part of the three compatible ones: supercell, rain or mesocyclone")
+        return
     
     return lons, lats, counts
 
@@ -182,7 +209,7 @@ def decadal_masks_fmap(typ, climate):
 #==================================================================================================================================================
 
 climate = "current"
-typ = "supercell"
+typ = "mesocyclone"
 season = "2021"
 lons, lats, counts = seasonal_masks_fmap(season, typ)
 

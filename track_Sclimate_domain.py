@@ -48,7 +48,8 @@ def main(outpath, start_day, end_day, climate):
         print("preparing data")
         
         # make timesteps: extract hourly timesteps from 4am of the current day to 3am of the subsequent day
-        mask_path = "/project/pr133/mblanc/cell_tracker_output/" + climate + "_climate/cell_masks_" + day.strftime("%Y%m%d") + ".nc"
+        mask_path = "/scratch/snx3000/mblanc/cell_tracker_output/" + climate + "_climate/cell_masks_" + day.strftime("%Y%m%d") + ".nc"
+        #mask_path = "/project/pr133/mblanc/cell_tracker_output/" + climate + "_climate/cell_masks_" + day.strftime("%Y%m%d") + ".nc"
         with xr.open_dataset(mask_path) as dset:
             times_5min = pd.to_datetime(dset['time'].values)
         timesteps = [t for t in times_5min if t.strftime("%M")=="00"]
@@ -57,14 +58,19 @@ def main(outpath, start_day, end_day, climate):
         fnames_p = []
         fnames_s = []
         fnames_h = [] # might need to rename raw files (suffering from errors in naming)
-        if climate == "current":
-            path_p = "/project/pr133/velasque/cosmo_simulations/climate_simulations/RUN_2km_cosmo6_climate/4_lm_f/output/1h_3D_plev/lffd"
-            path_s = "/project/pr133/velasque/cosmo_simulations/climate_simulations/RUN_2km_cosmo6_climate/4_lm_f/output/1h_2D/lffd"
-            path_h = "/project/pr133/velasque/cosmo_simulations/climate_simulations/RUN_2km_cosmo6_climate/4_lm_f/output/5min_2D/lffd"
-        else:
-            path_p = "/project/pr133/irist/scClim/RUN_2km_cosmo6_climate_PGW_MPI_HR/output/lm_f/1h_3D_plev/lffd"
-            path_s = "/project/pr133/irist/scClim/RUN_2km_cosmo6_climate_PGW_MPI_HR/output/lm_f/1h_2D/lffd"
-            path_h = "/project/pr133/irist/scClim/RUN_2km_cosmo6_climate_PGW_MPI_HR/output/lm_f/5min_2D/lffd"
+        path_p = "/scratch/snx3000/mblanc/SDT_input/" + climate + "_climate/1h_3D_plev/lffd"
+        path_s = "/scratch/snx3000/mblanc/SDT_input/" + climate + "_climate/1h_2D/lffd"
+        path_h = "/scratch/snx3000/mblanc/SDT_input/" + climate + "_climate/5min_2D/lff"
+        
+        #original paths in PROJECT 
+        # if climate == "current":
+        #     path_p = "/project/pr133/velasque/cosmo_simulations/climate_simulations/RUN_2km_cosmo6_climate/4_lm_f/output/1h_3D_plev/lffd"
+        #     path_s = "/project/pr133/velasque/cosmo_simulations/climate_simulations/RUN_2km_cosmo6_climate/4_lm_f/output/1h_2D/lffd"
+        #     path_h = "/project/pr133/velasque/cosmo_simulations/climate_simulations/RUN_2km_cosmo6_climate/4_lm_f/output/5min_2D/lffd"
+        # else:
+        #     path_p = "/project/pr133/irist/scClim/RUN_2km_cosmo6_climate_PGW_MPI_HR/output/lm_f/1h_3D_plev/lffd"
+        #     path_s = "/project/pr133/irist/scClim/RUN_2km_cosmo6_climate_PGW_MPI_HR/output/lm_f/1h_2D/lffd"
+        #     path_h = "/project/pr133/irist/scClim/RUN_2km_cosmo6_climate_PGW_MPI_HR/output/lm_f/5min_2D/lffd"
         
         for dt in timesteps:
             fnames_p.append(path_p + dt.strftime("%Y%m%d%H%M%S") + "p.nc")
@@ -75,7 +81,8 @@ def main(outpath, start_day, end_day, climate):
         
         # make rain mask and tracks file names
         rain_masks_name = mask_path  
-        rain_tracks_name = "/project/pr133/mblanc/cell_tracker_output/" + climate + "_climate/cell_tracks_" + day.strftime("%Y%m%d") + ".json"
+        #rain_tracks_name = "/project/pr133/mblanc/cell_tracker_output/" + climate + "_climate/cell_tracks_" + day.strftime("%Y%m%d") + ".json"
+        rain_tracks_name = "/scratch/snx3000/mblanc/cell_tracker_output/" + climate + "_climate/cell_tracks_" + day.strftime("%Y%m%d") + ".json"
         
         # track supercells
         print("tracking supercells")
@@ -93,9 +100,9 @@ def main(outpath, start_day, end_day, climate):
 
 #====================================================================================================================
 
-outpath = "/scratch/snx3000/mblanc/SDT_output/seasons/2020"
-start_day = "20200401"
-end_day = "20200401"
+outpath = "/scratch/snx3000/mblanc/SDT_output/seasons/2021"
+start_day = "20210401"
+end_day = "20210930"
 climate = "current"
 
 main(outpath, start_day, end_day, climate)

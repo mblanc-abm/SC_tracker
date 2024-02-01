@@ -40,44 +40,46 @@ def plot_fmap(lons, lats, fmap, typ, season=False, year=None, z=0):
     # load geographic features
     resol = '10m'  # use data at this scale
     bodr = cfeature.NaturalEarthFeature(category='cultural', name='admin_0_boundary_lines_land', scale=resol, facecolor='none', alpha=0.5)
-    ocean = cfeature.NaturalEarthFeature('physical', 'ocean', scale=resol, edgecolor='none', facecolor=cfeature.COLORS['water'])
+    #ocean = cfeature.NaturalEarthFeature('physical', 'ocean', scale=resol, edgecolor='none', facecolor=cfeature.COLORS['water'])
+    coastline = cfeature.NaturalEarthFeature('physical', 'coastline', scale=resol, facecolor='none')
     
     if season:
 
         fig = plt.figure()
         ax = plt.axes(projection=ccrs.PlateCarree())
-        ax.add_feature(bodr, linestyle='-', edgecolor='k', alpha=1, linewidth=0.5)
-        ax.add_feature(ocean, linewidth=0.2)
+        ax.add_feature(bodr, linestyle='-', edgecolor='k', alpha=1, linewidth=0.2)
+        #ax.add_feature(ocean, linewidth=0.2)
+        ax.add_feature(coastline, linestyle='-', edgecolor='k', linewidth=0.4)
         if z:
             cont = plt.pcolormesh(lons[z:-z,z:-z], lats[z:-z,z:-z], fmap[z:-z,z:-z], cmap="Reds", transform=ccrs.PlateCarree())
-            figname = "season" + year + "_zoom.png"
+            figname = typ + "_season" + year + "_zoom.png"
         else:
             cont = plt.pcolormesh(lons, lats, fmap, cmap="Reds", transform=ccrs.PlateCarree())
-            figname = "season" + year + ".png"
+            figname = typ + "_season" + year + ".png"
         plt.colorbar(cont, orientation='horizontal', label="number of " + typ + " mask counts")
-        plt.title("Season " + year + " distribution map")
+        plt.title("Season " + year + " " + typ + " distribution map")
         fig.savefig(figname, dpi=300)
         
     else:
         
         fig = plt.figure()
         ax = plt.axes(projection=ccrs.PlateCarree())
-        ax.add_feature(bodr, linestyle='-', edgecolor='k', alpha=1, linewidth=0.5)
-        ax.add_feature(ocean, linewidth=0.2)
+        ax.add_feature(bodr, linestyle='-', edgecolor='k', alpha=1, linewidth=0.2)
+        #ax.add_feature(ocean, linewidth=0.2)
+        ax.add_feature(coastline, linestyle='-', edgecolor='k', linewidth=0.4)
         if z:
             cont = plt.pcolormesh(lons[z:-z,z:-z], lats[z:-z,z:-z], fmap[z:-z,z:-z], cmap="Reds", transform=ccrs.PlateCarree())
-            figname = "decadal" + "_zoom.png"
+            figname = typ + "_decadal" + "_zoom.png"
         else:
             cont = plt.pcolormesh(lons, lats, fmap, cmap="Reds", transform=ccrs.PlateCarree())
-            figname = "decadal" + ".png"
+            figname = typ + "_decadal" + ".png"
         plt.colorbar(cont, orientation='horizontal', label="number of " + typ + " mask counts")
-        plt.title("Decadal distribution map")
+        plt.title("Decadal " + typ + " distribution map")
         fig.savefig(figname, dpi=300)
     
     return
 
 
-# so far designed for supercell and rain types only
 def seasonal_masks_fmap(season, typ, climate):
     """
     Compute the seasonal frequency map over whole domain
@@ -166,7 +168,6 @@ def seasonal_masks_fmap(season, typ, climate):
     return lons, lats, counts
 
 
-# so far designed for supercell and rain types only
 def decadal_masks_fmap(typ, climate):
     """
     Compute the decadal frequency map over whole domain
@@ -209,9 +210,17 @@ def decadal_masks_fmap(typ, climate):
 #==================================================================================================================================================
 
 climate = "current"
-typ = "mesocyclone"
-season = "2021"
-lons, lats, counts = seasonal_masks_fmap(season, typ)
+#typ = "mesocyclone"
+season = "2020"
 
-zoom = 0
-plot_fmap(lons, lats, counts, typ, season=True, year=season, z=zoom)
+lons, lats, counts_meso = seasonal_masks_fmap(season, "mesocyclone", climate)
+plot_fmap(lons, lats, counts_meso, "mesocyclone", season=True, year=season, z=0)
+plot_fmap(lons, lats, counts_meso, "mesocyclone", season=True, year=season, z=500)
+
+_, _, counts_SC = seasonal_masks_fmap(season, "supercell", climate)
+plot_fmap(lons, lats, counts_SC, "supercell", season=True, year=season, z=0)
+plot_fmap(lons, lats, counts_SC, "supercell", season=True, year=season, z=500)
+
+_, _, counts_rain = seasonal_masks_fmap(season, "rain", climate)
+plot_fmap(lons, lats, counts_rain, "rain", season=True, year=season, z=0)
+plot_fmap(lons, lats, counts_rain, "rain", season=True, year=season, z=500)

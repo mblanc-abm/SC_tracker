@@ -80,7 +80,33 @@ def plot_fmap(lons, lats, fmap, typ, season=False, year=None, z=0):
     return
 
 
-def seasonal_masks_fmap(season, typ, climate):
+def resolve_overlaps(rain_masks):
+    """
+    resolves overlaps for frequency map: for every grid point, discards the additional counts of the rain cells overlapping several times
+    with themselves, so that a single, overlapping raintrack only counts as 1
+
+    Parameters
+    ----------
+    rain_masks : 3D array
+        labeled rain cells (nan is background, cell labels start at 0), 2D arrays concatenated with a 5 min resolution, time is the first dimension
+
+    Returns
+    -------
+    counts : 2D array
+        number of counts at every grid point for the considered day
+    """
+    
+    counts = np.zeros_like(rain_masks[0], dtype=int)
+    for i in range(rain_masks.shape[1]):
+        for j in range(rain_masks.shape[2]):
+            ids = np.unique(rain_masks[:,i,j]) #consider the time column
+            ids = ids[~np.isnan(ids)].astype(int) #remove nans and convert from float to int type
+            counts[i,j] = len(ids)
+    
+    return counts
+
+
+def seasonal_masks_fmap(season, typ, climate, resolve_ovl=False):
     """
     Compute the seasonal frequency map over whole domain
     
@@ -133,13 +159,19 @@ def seasonal_masks_fmap(season, typ, climate):
                     SC_info = json.load(read_file)['supercell_data']
                 SC_ids = [SC_info[j]['rain_cell_id'] for j in range(len(SC_info))]
                 rain_masks = np.where(np.isin(rain_masks, SC_ids), rain_masks, np.nan)
-                
-            bin_masks = np.logical_not(np.isnan(rain_masks))
             
-            if i == 0:
-                counts = np.count_nonzero(bin_masks, axis=0)
+            if resolve_ovl:
+                if i == 0:
+                    counts = resolve_overlaps(rain_masks)
+                else:
+                    counts += resolve_overlaps(rain_masks)
             else:
-                counts += np.count_nonzero(bin_masks, axis=0)
+                bin_masks = np.logical_not(np.isnan(rain_masks))
+                if i == 0:
+                    counts = np.count_nonzero(bin_masks, axis=0)
+                else:
+                    counts += np.count_nonzero(bin_masks, axis=0)
+            
                 
     elif typ == "mesocyclone":
         
@@ -211,7 +243,7 @@ def decadal_masks_fmap(typ, climate):
 
 climate = "current"
 #typ = "mesocyclone"
-season = "2020"
+season = "2021"
 
 lons, lats, counts_meso = seasonal_masks_fmap(season, "mesocyclone", climate)
 plot_fmap(lons, lats, counts_meso, "mesocyclone", season=True, year=season, z=0)

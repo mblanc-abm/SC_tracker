@@ -37,8 +37,8 @@ def plot_fmap(lons, lats, fmap, typ, season=False, year=None, z=0):
     Plots the desired frequency map and saves it.
     """
     # bleach the background -> set 0 counts to nans
-    fmap = fmap.astype(float)
-    fmap[fmap==0] = np.nan
+    # fmap = fmap.astype(float)
+    # fmap[fmap==0] = np.nan
     
     # load geographic features
     resol = '10m'  # use data at this scale
@@ -52,7 +52,7 @@ def plot_fmap(lons, lats, fmap, typ, season=False, year=None, z=0):
         ax = plt.axes(projection=ccrs.PlateCarree())
         ax.add_feature(bodr, linestyle='-', edgecolor='k', alpha=1, linewidth=0.2)
         #ax.add_feature(ocean, linewidth=0.2)
-        ax.add_feature(coastline, linestyle='-', edgecolor='k', linewidth=0.4)
+        ax.add_feature(coastline, linestyle='-', edgecolor='k', linewidth=0.3)
         if z:
             cont = plt.pcolormesh(lons[z:-z,z:-z], lats[z:-z,z:-z], fmap[z:-z,z:-z], cmap="Reds", transform=ccrs.PlateCarree())
             figname = typ + "_season" + year + "_zoom.png"

@@ -22,10 +22,11 @@ import os
 import xarray as xr
 import pandas as pd
 #import numpy as np
+import time
 
 #====================================================================================================================
 
-def main(outpath, start_day, end_day, climate):
+def main(outpath, start_day, end_day, climate, skipped_days=None):
     
     # set tracking parameters
     threshold = 75
@@ -36,6 +37,11 @@ def main(outpath, start_day, end_day, climate):
     start_day = pd.to_datetime(start_day, format="%Y%m%d")
     end_day = pd.to_datetime(end_day, format="%Y%m%d")
     daylist = pd.date_range(start_day, end_day)
+    
+    # remove skipped days from daylist
+    if skipped_days:
+        skipped_days = pd.to_datetime(skipped_days, format="%Y%m%d")
+        daylist = [day for day in daylist if day not in skipped_days]
 
     # make output directory
     os.makedirs(outpath, exist_ok=True)
@@ -57,12 +63,12 @@ def main(outpath, start_day, end_day, climate):
         # make 1h_3D (pressure level), 1h_2D (surface pressure and max surface wind),and 5min_2D (max hail) files names
         fnames_p = []
         fnames_s = []
-        fnames_h = [] # might need to rename raw files (suffering from errors in naming)
+        fnames_h = []
         path_p = "/scratch/snx3000/mblanc/SDT_input/" + climate + "_climate/1h_3D_plev/lffd"
         path_s = "/scratch/snx3000/mblanc/SDT_input/" + climate + "_climate/1h_2D/lffd"
-        path_h = "/scratch/snx3000/mblanc/SDT_input/" + climate + "_climate/5min_2D/lff"
+        path_h = "/scratch/snx3000/mblanc/SDT_input/" + climate + "_climate/5min_2D/lffd"
         
-        #original paths in PROJECT 
+        # # original paths in PROJECT 
         # if climate == "current":
         #     path_p = "/project/pr133/velasque/cosmo_simulations/climate_simulations/RUN_2km_cosmo6_climate/4_lm_f/output/1h_3D_plev/lffd"
         #     path_s = "/project/pr133/velasque/cosmo_simulations/climate_simulations/RUN_2km_cosmo6_climate/4_lm_f/output/1h_2D/lffd"
@@ -100,12 +106,16 @@ def main(outpath, start_day, end_day, climate):
 
 #====================================================================================================================
 
-outpath = "/scratch/snx3000/mblanc/SDT_output/seasons/2021"
-start_day = "20210401"
-end_day = "20210930"
+outpath = "/scratch/snx3000/mblanc/SDT_output/seasons/2012"
+start_day = "20120401"
+end_day = "20120930"
 climate = "current"
+skipped_days = ['20120604', '20140923', '20150725', '20160927', '20170725']
 
-main(outpath, start_day, end_day, climate)
+start_time = time.time()
+main(outpath, start_day, end_day, climate, skipped_days)
+elapsed_time = time.time() - start_time
+print(elapsed_time)
 
 # if __name__ == "__main__":
 #     p = argparse.ArgumentParser(description="tracks cells")

@@ -36,6 +36,9 @@ def plot_fmap(lons, lats, fmap, typ, season=False, year=None, z=0):
     -------
     Plots the desired frequency map and saves it.
     """
+    # bleach the background -> set 0 counts to nans
+    fmap = fmap.astype(float)
+    fmap[fmap==0] = np.nan
     
     # load geographic features
     resol = '10m'  # use data at this scale
@@ -209,7 +212,7 @@ def seasonal_masks_fmap(season, typ, climate, resolve_ovl=False, skipped_days=No
     return lons, lats, counts
 
 
-def decadal_masks_fmap(typ, climate, resolve_ovl=False):
+def decadal_masks_fmap(typ, climate, resolve_ovl=False, skipped_days=None):
     """
     Compute the decadal frequency map over whole domain
     
@@ -238,9 +241,9 @@ def decadal_masks_fmap(typ, climate, resolve_ovl=False):
     
     for i, year in enumerate(years):
         if i == 0:
-            lons, lats, counts = seasonal_masks_fmap(year, typ, climate, resolve_ovl)
+            lons, lats, counts = seasonal_masks_fmap(year, typ, climate, resolve_ovl, skipped_days)
         else:
-            _, _, counts2 = seasonal_masks_fmap(year, typ, climate, resolve_ovl)
+            _, _, counts2 = seasonal_masks_fmap(year, typ, climate, resolve_ovl, skipped_days)
             counts += counts2
     
     return lons, lats, counts
@@ -253,16 +256,16 @@ def decadal_masks_fmap(typ, climate, resolve_ovl=False):
 skipped_days = ['20120604', '20140923', '20150725', '20160927', '20170725']
 climate = "current"
 #typ = "mesocyclone"
-season = "2018"
+season = "2020"
 resolve_ovl = True #only for rain and supercell types
 
 lons, lats, counts_meso = seasonal_masks_fmap(season, "mesocyclone", climate, skipped_days=skipped_days)
 plot_fmap(lons, lats, counts_meso, "mesocyclone", season=True, year=season, z=0)
 plot_fmap(lons, lats, counts_meso, "mesocyclone", season=True, year=season, z=500)
 
-_, _, counts_SC = seasonal_masks_fmap(season, "supercell", climate, resolve_ovl, skipped_days=skipped_days)
-plot_fmap(lons, lats, counts_SC, "supercell", season=True, year=season, z=0)
-plot_fmap(lons, lats, counts_SC, "supercell", season=True, year=season, z=500)
+# _, _, counts_SC = seasonal_masks_fmap(season, "supercell", climate, resolve_ovl, skipped_days=skipped_days)
+# plot_fmap(lons, lats, counts_SC, "supercell", season=True, year=season, z=0)
+# plot_fmap(lons, lats, counts_SC, "supercell", season=True, year=season, z=500)
 
 # lons, lats, counts_rain = seasonal_masks_fmap(season, "rain", climate, resolve_ovl, skipped_days=skipped_days)
 # plot_fmap(lons, lats, counts_rain, "rain", season=True, year=season, z=0)

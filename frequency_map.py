@@ -13,7 +13,7 @@ import cartopy.feature as cfeature
 
 def plot_fmap(lons, lats, fmap, typ, season=False, year=None, z=0):
     """
-    Plots the desired decadal (default) or seasonal frequency map
+    Plots the desired decadal (default) or seasonal frequency map and saves the figure
     
     Parameters
     ----------
@@ -178,7 +178,7 @@ def seasonal_masks_fmap(season, typ, climate, resolve_ovl=False, skipped_days=No
                 else:
                     counts += resolve_overlaps(rain_masks)
             else:
-                bin_masks = np.logical_not(np.isnan(rain_masks))
+                bin_masks = rain_masks > 0 #np.logical_not(np.isnan(rain_masks))
                 if i == 0:
                     counts = np.count_nonzero(bin_masks, axis=0)
                 else:
@@ -249,6 +249,37 @@ def decadal_masks_fmap(typ, climate, resolve_ovl=False, skipped_days=None):
     return lons, lats, counts
 
 
+def write_to_netcdf(lons, lats, counts, filename):
+    """
+    writes netcdf file containing mesocyclones binary masks
+
+    in
+    lons: longitude at each gridpoint, 2D array
+    lats: latitude at each gridpoint, 2D array
+    filename: file path and name, string
+
+    out
+    ds: 2D xarray dataset containing the frequency map, xarray dataset
+    """
+
+    coords = {
+        "y": np.arange(lats.shape[0]),
+        "x": np.arange(lons.shape[1]),
+    }
+    data_structure = {
+        "frequency_map": (["y", "x"], counts),
+        "lat": (["y", "x"], lats),
+        "lon": (["y", "x"], lons),
+    }
+
+    # create netcdf file
+    ds = xr.Dataset(data_structure, coords=coords)
+
+    # write to netcdf file
+    # ds.to_netcdf(filename)
+    ds.to_netcdf(filename, encoding={'frequency_map': {'zlib': True, 'complevel': 9}})
+
+
 #==================================================================================================================================================
 # MAIN
 #==================================================================================================================================================
@@ -256,17 +287,23 @@ def decadal_masks_fmap(typ, climate, resolve_ovl=False, skipped_days=None):
 skipped_days = ['20120604', '20140923', '20150725', '20160927', '20170725']
 climate = "current"
 #typ = "mesocyclone"
-season = "2020"
+season = "2021"
 resolve_ovl = True #only for rain and supercell types
 
-lons, lats, counts_meso = seasonal_masks_fmap(season, "mesocyclone", climate, skipped_days=skipped_days)
-plot_fmap(lons, lats, counts_meso, "mesocyclone", season=True, year=season, z=0)
-plot_fmap(lons, lats, counts_meso, "mesocyclone", season=True, year=season, z=500)
+# lons, lats, counts_meso = seasonal_masks_fmap(season, "mesocyclone", climate, skipped_days=skipped_days)
+# plot_fmap(lons, lats, counts_meso, "mesocyclone", season=True, year=season, z=0)
+# plot_fmap(lons, lats, counts_meso, "mesocyclone", season=True, year=season, z=500)
+# filename_meso = "/scratch/snx3000/mblanc/fmaps_data/meso_season" + season + ".nc"
+# write_to_netcdf(lons, lats, counts_meso, filename_meso)
 
 # _, _, counts_SC = seasonal_masks_fmap(season, "supercell", climate, resolve_ovl, skipped_days=skipped_days)
 # plot_fmap(lons, lats, counts_SC, "supercell", season=True, year=season, z=0)
 # plot_fmap(lons, lats, counts_SC, "supercell", season=True, year=season, z=500)
+# filename_SC = "/scratch/snx3000/mblanc/fmaps_data/SC_season" + season + ".nc"
+# write_to_netcdf(lons, lats, counts_SC, filename_SC)
 
-# lons, lats, counts_rain = seasonal_masks_fmap(season, "rain", climate, resolve_ovl, skipped_days=skipped_days)
-# plot_fmap(lons, lats, counts_rain, "rain", season=True, year=season, z=0)
-# plot_fmap(lons, lats, counts_rain, "rain", season=True, year=season, z=500)
+lons, lats, counts_rain = seasonal_masks_fmap(season, "rain", climate, resolve_ovl, skipped_days=skipped_days)
+plot_fmap(lons, lats, counts_rain, "rain", season=True, year=season, z=0)
+plot_fmap(lons, lats, counts_rain, "rain", season=True, year=season, z=500)
+filename_rain = "/scratch/snx3000/mblanc/fmaps_data/rain_season" + season + ".nc"
+write_to_netcdf(lons, lats, counts_rain, filename_rain)

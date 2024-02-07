@@ -11,7 +11,7 @@ import cartopy.feature as cfeature
 # FUNCTIONS
 #==================================================================================================================================================
 
-def plot_fmap(lons, lats, fmap, typ, season=False, year=None, z=0):
+def plot_fmap(lons, lats, fmap, typ, season=False, year=None, zoom=False):
     """
     Plots the desired decadal (default) or seasonal frequency map and saves the figure
     
@@ -29,8 +29,8 @@ def plot_fmap(lons, lats, fmap, typ, season=False, year=None, z=0):
         True for a seasonal frequency map, False for the decadal period. The default is False.
     year : str or None
         if seasonal, year YYYY of the season. Elsewise, None. The default is None.
-    z : int, optional
-        0: no zoom (whole domain) ; 500: zoom over France and Switzerland. The default is 0.
+    zoom : bool, optional
+        False: smart cut of whole domain (ocean and Northern Africa discarded) ; True: zoom on the Alps. The default is False.
 
     Returns
     -------
@@ -53,11 +53,13 @@ def plot_fmap(lons, lats, fmap, typ, season=False, year=None, z=0):
         ax.add_feature(bodr, linestyle='-', edgecolor='k', alpha=1, linewidth=0.2)
         #ax.add_feature(ocean, linewidth=0.2)
         ax.add_feature(coastline, linestyle='-', edgecolor='k', linewidth=0.3)
-        if z:
-            cont = plt.pcolormesh(lons[z:-z,z:-z], lats[z:-z,z:-z], fmap[z:-z,z:-z], cmap="Reds", transform=ccrs.PlateCarree())
-            figname = typ + "_season" + year + "_zoom.png"
+        if zoom:
+            zl, zr, zb, zt = 750, 400, 570, 700 #cut for Alpine region
+            cont = plt.pcolormesh(lons[zb:-zt,zl:-zr], lats[zb:-zt,zl:-zr], fmap[zb:-zt,zl:-zr], cmap="Reds", transform=ccrs.PlateCarree())
+            figname = typ + "_season" + year + "_alps.png"
         else:
-            cont = plt.pcolormesh(lons, lats, fmap, cmap="Reds", transform=ccrs.PlateCarree())
+            zl, zr, zb, zt = 200, 1, 200, 1 #smart cut for entire domain
+            cont = plt.pcolormesh(lons[zb:-zt,zl:-zr], lats[zb:-zt,zl:-zr], fmap[zb:-zt,zl:-zr], cmap="Reds", transform=ccrs.PlateCarree())
             figname = typ + "_season" + year + ".png"
         plt.colorbar(cont, orientation='horizontal', label="number of " + typ + " mask counts")
         plt.title("Season " + year + " " + typ + " distribution map")
@@ -70,11 +72,13 @@ def plot_fmap(lons, lats, fmap, typ, season=False, year=None, z=0):
         ax.add_feature(bodr, linestyle='-', edgecolor='k', alpha=1, linewidth=0.2)
         #ax.add_feature(ocean, linewidth=0.2)
         ax.add_feature(coastline, linestyle='-', edgecolor='k', linewidth=0.4)
-        if z:
-            cont = plt.pcolormesh(lons[z:-z,z:-z], lats[z:-z,z:-z], fmap[z:-z,z:-z], cmap="Reds", transform=ccrs.PlateCarree())
-            figname = typ + "_decadal" + "_zoom.png"
+        if zoom:
+            zl, zr, zb, zt = 750, 400, 570, 700 #cut for Alpine region
+            cont = plt.pcolormesh(lons[zb:-zt,zl:-zr], lats[zb:-zt,zl:-zr], fmap[zb:-zt,zl:-zr], cmap="Reds", transform=ccrs.PlateCarree())
+            figname = typ + "_decadal" + "_alps.png"
         else:
-            cont = plt.pcolormesh(lons, lats, fmap, cmap="Reds", transform=ccrs.PlateCarree())
+            zl, zr, zb, zt = 200, 1, 200, 1 #smart cut for entire domain
+            cont = plt.pcolormesh(lons[zb:-zt,zl:-zr], lats[zb:-zt,zl:-zr], fmap[zb:-zt,zl:-zr], cmap="Reds", transform=ccrs.PlateCarree())
             figname = typ + "_decadal" + ".png"
         plt.colorbar(cont, orientation='horizontal', label="number of " + typ + " mask counts")
         plt.title("Decadal " + typ + " distribution map")
@@ -291,19 +295,19 @@ season = "2021"
 resolve_ovl = True #only for rain and supercell types
 
 # lons, lats, counts_meso = seasonal_masks_fmap(season, "mesocyclone", climate, skipped_days=skipped_days)
-# plot_fmap(lons, lats, counts_meso, "mesocyclone", season=True, year=season, z=0)
-# plot_fmap(lons, lats, counts_meso, "mesocyclone", season=True, year=season, z=500)
+# plot_fmap(lons, lats, counts_meso, "mesocyclone", season=True, year=season)
+# plot_fmap(lons, lats, counts_meso, "mesocyclone", season=True, year=season, zoom=True)
 # filename_meso = "/scratch/snx3000/mblanc/fmaps_data/meso_season" + season + ".nc"
 # write_to_netcdf(lons, lats, counts_meso, filename_meso)
 
 # _, _, counts_SC = seasonal_masks_fmap(season, "supercell", climate, resolve_ovl, skipped_days=skipped_days)
-# plot_fmap(lons, lats, counts_SC, "supercell", season=True, year=season, z=0)
-# plot_fmap(lons, lats, counts_SC, "supercell", season=True, year=season, z=500)
+# plot_fmap(lons, lats, counts_SC, "supercell", season=True, year=season)
+# plot_fmap(lons, lats, counts_SC, "supercell", season=True, year=season, zoom=True)
 # filename_SC = "/scratch/snx3000/mblanc/fmaps_data/SC_season" + season + ".nc"
 # write_to_netcdf(lons, lats, counts_SC, filename_SC)
 
 lons, lats, counts_rain = seasonal_masks_fmap(season, "rain", climate, resolve_ovl, skipped_days=skipped_days)
-plot_fmap(lons, lats, counts_rain, "rain", season=True, year=season, z=0)
-plot_fmap(lons, lats, counts_rain, "rain", season=True, year=season, z=500)
+plot_fmap(lons, lats, counts_rain, "rain", season=True, year=season)
+plot_fmap(lons, lats, counts_rain, "rain", season=True, year=season, zoom=True)
 filename_rain = "/scratch/snx3000/mblanc/fmaps_data/rain_season" + season + ".nc"
 write_to_netcdf(lons, lats, counts_rain, filename_rain)

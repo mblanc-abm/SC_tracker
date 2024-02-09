@@ -288,11 +288,11 @@ def write_to_netcdf(lons, lats, counts, filename):
 # MAIN
 #==================================================================================================================================================
 
-skipped_days = ['20120604', '20140923', '20150725', '20160927', '20170725']
-climate = "current"
-#typ = "mesocyclone"
-season = "2021"
-resolve_ovl = True #only for rain and supercell types
+# skipped_days = ['20120604', '20140923', '20150725', '20160927', '20170725']
+# climate = "current"
+# #typ = "mesocyclone"
+# season = "2012"
+# resolve_ovl = True #only for rain and supercell types
 
 # lons, lats, counts_meso = seasonal_masks_fmap(season, "mesocyclone", climate, skipped_days=skipped_days)
 # plot_fmap(lons, lats, counts_meso, "mesocyclone", season=True, year=season)
@@ -306,8 +306,55 @@ resolve_ovl = True #only for rain and supercell types
 # filename_SC = "/scratch/snx3000/mblanc/fmaps_data/SC_season" + season + ".nc"
 # write_to_netcdf(lons, lats, counts_SC, filename_SC)
 
-lons, lats, counts_rain = seasonal_masks_fmap(season, "rain", climate, resolve_ovl, skipped_days=skipped_days)
-plot_fmap(lons, lats, counts_rain, "rain", season=True, year=season)
-plot_fmap(lons, lats, counts_rain, "rain", season=True, year=season, zoom=True)
-filename_rain = "/scratch/snx3000/mblanc/fmaps_data/rain_season" + season + ".nc"
-write_to_netcdf(lons, lats, counts_rain, filename_rain)
+# lons, lats, counts_rain = seasonal_masks_fmap(season, "rain", climate, resolve_ovl, skipped_days=skipped_days)
+# plot_fmap(lons, lats, counts_rain, "rain", season=True, year=season)
+# plot_fmap(lons, lats, counts_rain, "rain", season=True, year=season, zoom=True)
+# filename_rain = "/scratch/snx3000/mblanc/fmaps_data/rain_season" + season + ".nc"
+# write_to_netcdf(lons, lats, counts_rain, filename_rain)
+
+#==================================================================================================================================================
+# plots from stored data
+
+# season = "2021"
+
+# with xr.open_dataset("/scratch/snx3000/mblanc/fmaps_data/meso_season" + season + ".nc") as dset:
+#     counts_meso = dset['frequency_map']
+#     lons = dset['lon'].values
+#     lats = dset['lat'].values
+# plot_fmap(lons, lats, counts_meso, "mesocyclone", season=True, year=season)
+# plot_fmap(lons, lats, counts_meso, "mesocyclone", season=True, year=season, zoom=True)
+
+# with xr.open_dataset("/scratch/snx3000/mblanc/fmaps_data/SC_season" + season + ".nc") as dset:
+#     counts_SC = dset['frequency_map']
+# plot_fmap(lons, lats, counts_SC, "supercell", season=True, year=season)
+# plot_fmap(lons, lats, counts_SC, "supercell", season=True, year=season, zoom=True)
+
+#==================================================================================================================================================
+# decadal frequency map from stored data
+
+# climate = "current"
+# years = ["2011", "2012", "2013", "2014", "2015", "2016", "2017", "2018", "2019", "2020", "2021"]
+
+# for i, year in enumerate(years):
+#     if i == 0:
+#         with xr.open_dataset("/scratch/snx3000/mblanc/fmaps_data/meso_season" + year + ".nc") as dset:
+#             counts_meso = dset['frequency_map']
+#             lons = dset['lon'].values
+#             lats = dset['lat'].values
+#     else:
+#         with xr.open_dataset("/scratch/snx3000/mblanc/fmaps_data/meso_season" + year + ".nc") as dset:
+#             counts = dset['frequency_map']
+#         counts_meso += counts
+# plot_fmap(lons, lats, counts_meso, "mesocyclone")
+
+# for i, year in enumerate(years):
+#     if i == 0:
+#         with xr.open_dataset("/scratch/snx3000/mblanc/fmaps_data/SC_season" + year + ".nc") as dset:
+#             counts_SC = dset['frequency_map']
+#             lons = dset['lon'].values
+#             lats = dset['lat'].values
+#     else:
+#         with xr.open_dataset("/scratch/snx3000/mblanc/fmaps_data/SC_season" + year + ".nc") as dset:
+#             counts = dset['frequency_map']
+#         counts_SC += counts
+# plot_fmap(lons, lats, counts_SC, "supercell")

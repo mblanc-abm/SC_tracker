@@ -154,9 +154,182 @@ def resolve_overlaps(rain_masks):
     return counts
 
 
+def seasonal_supercell_tracks_model_fmap(season, filtering=True, skipped_days=None):
+    """
+    Computes the seasonal supercell frequency map using tracks method over the model whole domain
+    Takes care of overlaps by default
+    
+    Parameters
+    ----------
+    season : str
+        considered season, YYYY
+    filtering : bool
+        filters out the mask patches associated with the cells whose max rain rate does not reach the thr+prom = 13.7 mm/h criterion
+    skipped_days : list of str
+        list of missing days which consequently must be skipped
+
+    Returns
+    -------
+    lons : 2D array
+        longitude at each gridpoint
+    lats : 2D array
+        latitude at each gridpoint
+    counts : 2D array
+        the desired seasonal supercell frequency map
+    """
+    
+    start_day = pd.to_datetime(season + "0401")
+    end_day = pd.to_datetime(season + "0930")
+    daylist = pd.date_range(start_day, end_day)
+    
+    # load lons and lats static fields
+    with xr.open_dataset("/scratch/snx3000/mblanc/fmaps_data/model_masks/meso_season2011.nc") as dset:
+        lons = dset["lon"].values
+        lats = dset["lat"].values
+    
+    counts = np.zeros_like(lons, dtype=int) # initialise the counts matrix
+    fp_ind = np.argwhere(disk(1)) # footprint: 4-connectivity; will serve for marking the supercell core footprint
+    
+    # remove skipped days from daylist
+    if skipped_days:
+        skipped_days = pd.to_datetime(skipped_days, format="%Y%m%d")
+        daylist = [day for day in daylist if day not in skipped_days]
+    
+    SC_path = "/scratch/snx3000/mblanc/SDT_output/seasons/" + season + "/"
+    SC_files = []
+    for day in daylist:
+        SC_files.append(SC_path + "supercell_" + day.strftime("%Y%m%d") + ".json")
+    
+    # loop over the days of the season
+    for SC_file in SC_files:
+        # initialise an intermediate counts matrix for this day, which will contain its supercells tracks footprint; this incidentally avoids overlaps
+        counts_day = np.zeros_like(lons, dtype=int) 
+        
+        # load the supercells of the given day
+        with open(SC_file, "r") as read_file:
+            SC_info = json.load(read_file)['supercell_data']
+        
+        # loop over the supercells of the day
+        for SC in SC_info:
+            # initialise an intermediate counts matrix for this SC, which will contain its track footprint; this incidentally avoids overlaps
+            counts_SC = np.zeros_like(lons, dtype=int) 
+            
+            if filtering:
+                indices = np.array(SC['cell_max_rain']) >= 13.7 # select the indices of the track that must be kept
+                SC_lons = np.array(SC['cell_lon'])[indices]
+                SC_lats = np.array(SC['cell_lat'])[indices]
+            else:
+                SC_lons = SC['cell_lon']
+                SC_lats = SC['cell_lat']
+            
+            for j in range(len(SC_lons)): # for each SC centre of mass location
+                distances = np.sqrt((lons - SC_lons[j])**2 + (lats - SC_lats[j])**2) # interpolate it from the lon-lat coords to the grid indices
+                k,l = np.unravel_index(np.argmin(distances), distances.shape) #indices on grid corresponding to the SC centre of mass interpolation
+                counts_SC[k-1+fp_ind[:,0], l-1+fp_ind[:,1]] = 1 # the 4-connectivity disk around centre of mass as proxy of SC core
+            
+            counts_day += counts_SC
+            
+        counts += counts_day
+        
+    return lons, lats, counts
+
+
+def seasonal_supercell_tracks_obs_fmap(start_day, end_day):
+    """
+    Computes the seasonal supercell frequency map using tracks method over the observational domain (swiss radar network)
+    The season is delineated by the starting and ending days
+    Takes care of overlaps by default
+    
+    Parameters
+    ----------
+    start_day : str
+        first day of the season, YYYYmmdd
+    end_day : str
+        last day of the season, YYYYmmdd
+
+    Returns
+    -------
+    lons : 2D array
+        longitude at each gridpoint
+    lats : 2D array
+        latitude at each gridpoint
+    counts : 2D array
+        the desired seasonal supercell frequency map
+    """
+    
+    start_day = pd.to_datetime(start_day, format="%Y%m%d")
+    end_day = pd.to_datetime(end_day, format="%Y%m%d")
+    daylist = pd.date_range(start_day, end_day) # comprehensive days spanning the season
+    daylist_str = [day.strftime("%Y%m%d") for day in daylist] # comprehensive days spanning the season
+    season = start_day.strftime("%Y")
+    
+    # load lons and lats static fields
+    with xr.open_dataset("/scratch/snx3000/mblanc/fmaps_data/model_masks/meso_season2011.nc") as dset:
+        lons = dset["lon"].values
+        lats = dset["lat"].values
+    
+    counts = np.zeros_like(lons, dtype=int) # initialise the counts matrix
+    fp_ind = np.argwhere(disk(1)) # footprint: 4-connectivity; will serve for marking the supercell core footprint
+    
+    if season == "2022": # season 2022, special meso dataset
+        
+        # open meso dataset
+        usecols = ['ID','time','lon','lat']
+        mesoset = pd.read_csv("/scratch/snx3000/mblanc/observations/TRTc_mesostorm_2022.csv", sep=';', usecols=usecols)
+        mesoset['time'] = pd.to_datetime(mesoset['time'], format="%Y%m%d%H%M")
+        mesoset['ID'] = [int(round(x)) for x in mesoset['ID']]
+        
+        # restrict to the considered period
+        days_str = [dt.strftime("%Y%m%d") for dt in mesoset['time']]
+        selection = mesoset[np.isin(days_str, daylist_str)]
+        SC_ids = np.unique(selection['ID']) # extract the IDs of all the supercells of the considered period
+        
+        # loop over the supercells of the season
+        for SC_ID in SC_ids:
+            counts_SC = np.zeros_like(lons, dtype=int) # initialise an intermediate counts matrix for this SC, which will contain its track footprint; this incidentally avoids overlaps
+            SC_lons = selection['lon'][selection['ID'] == SC_ID] # get the lon-lat coordinates of the SC track
+            SC_lats = selection['lat'][selection['ID'] == SC_ID]
+            
+            for j in range(len(SC_lons)): # for each SC centroid location
+                distances = np.sqrt((lons - SC_lons[j])**2 + (lats - SC_lats[j])**2) # interpolate it from the lon-lat coords to the grid indices
+                k,l = np.unravel_index(np.argmin(distances), distances.shape) #indices on grid corresponding to the SC centroid interpolation
+                counts_SC[k-1+fp_ind[:,0], l-1+fp_ind[:,1]] = 1 # the 4-connectivity disk around centre of mass as proxy of SC core
+            
+            counts += counts_SC
+        
+    else: # season within the 2016-2021 dataset
+        
+        # open full observational dataset
+        usecols = ['ID','time','mesostorm','lon','lat']
+        fullset = pd.read_csv("/scratch/snx3000/mblanc/observations/Full_dataset_thunderstorm_types.csv", sep=';', usecols=usecols)
+        fullset['time'] = pd.to_datetime(fullset['time'], format="%Y%m%d%H%M")
+        days_str = [dt.strftime("%Y%m%d") for dt in fullset['time']]
+
+        # restrict to the given season and select the supercells
+        selection = fullset[np.isin(days_str, daylist_str)]
+        selection = selection[selection['mesostorm']==1]
+        selection['ID'] = [int(round(x)) for x in selection['ID']]
+        SC_ids = np.unique(selection['ID']) # extract the IDs of all the supercells of the considered period
+        
+        # loop over the supercells of the season
+        for SC_ID in SC_ids:
+            counts_SC = np.zeros_like(lons, dtype=int) # initialise an intermediate counts matrix for this SC, which will contain its track footprint; this incidentally avoids overlaps
+            SC_lons = selection['lon'][selection['ID'] == SC_ID] # get the lon-lat coordinates of the SC track
+            SC_lats = selection['lat'][selection['ID'] == SC_ID]
+            
+            for j in range(len(SC_lons)): # for each SC centroid location
+                distances = np.sqrt((lons - SC_lons[j])**2 + (lats - SC_lats[j])**2) # interpolate it from the lon-lat coords to the grid indices
+                k,l = np.unravel_index(np.argmin(distances), distances.shape) #indices on grid corresponding to the SC centroid interpolation
+                counts_SC[k-1+fp_ind[:,0], l-1+fp_ind[:,1]] = 1 # the 4-connectivity disk around centre of mass as proxy of SC core
+            
+            counts += counts_SC
+    
+    return lons, lats, counts
+
+
 def seasonal_masks_fmap(season, typ, climate, resolve_ovl=False, filtering=False, skipped_days=None):
     """
-    Computes the seasonal frequency map over whole domain
+    Computes the seasonal frequency map using masks method over the model whole domain
     
     Parameters
     ----------
@@ -344,47 +517,50 @@ def write_to_netcdf(lons, lats, counts, filename):
 #==================================================================================================================================================
 # MAIN
 #==================================================================================================================================================
+# create data and plot and store them
 
-# skipped_days = ['20120604', '20140923', '20150725', '20160927', '20170725']
+skipped_days = ['20120604', '20140923', '20150725', '20160927', '20170725']
 # climate = "current"
-# season = "2021"
+season = "2011"
+method = "model_tracks"
 # resolve_ovl = True #only for rain and supercell types
 # filtering = True #only for supercell type
 
 # lons, lats, counts_meso = seasonal_masks_fmap(season, "mesocyclone", climate, skipped_days=skipped_days)
-# plot_fmap(lons, lats, counts_meso, "mesocyclone", season=True, year=season)
-# plot_fmap(lons, lats, counts_meso, "mesocyclone", season=True, year=season, zoom=True)
-# filename_meso = "/scratch/snx3000/mblanc/fmaps_data/meso_season" + season + ".nc"
+# plot_fmap(lons, lats, counts_meso, "mesocyclone", season=True, year=season, conv=True)
+# plot_fmap(lons, lats, counts_meso, "mesocyclone", season=True, year=season, zoom=True, conv=True)
+# filename_meso = "/scratch/snx3000/mblanc/fmaps_data/" + method + "/meso_season" + season + ".nc"
 # write_to_netcdf(lons, lats, counts_meso, filename_meso)
 
 # lons, lats, counts_SC = seasonal_masks_fmap(season, "supercell", climate, resolve_ovl, filtering=filtering, skipped_days=skipped_days)
-# plot_fmap(lons, lats, counts_SC, "supercell", season=True, year=season, filtering=filtering)
-# plot_fmap(lons, lats, counts_SC, "supercell", season=True, year=season, zoom=True, filtering=filtering)
-# filename_SC = "/scratch/snx3000/mblanc/fmaps_data/SC_season" + season + "_filtered.nc"
+# plot_fmap(lons, lats, counts_SC, "supercell", season=True, year=season, filtering=filtering, conv=True)
+# plot_fmap(lons, lats, counts_SC, "supercell", season=True, year=season, zoom=True, filtering=filtering, conv=True)
+# filename_SC = "/scratch/snx3000/mblanc/fmaps_data/" + method + "/SC_season" + season + "_filtered.nc"
 # write_to_netcdf(lons, lats, counts_SC, filename_SC)
 
-# lons, lats, counts_rain = seasonal_masks_fmap(season, "rain", climate, resolve_ovl, skipped_days=skipped_days)
-# plot_fmap(lons, lats, counts_rain, "rain", season=True, year=season)
-# plot_fmap(lons, lats, counts_rain, "rain", season=True, year=season, zoom=True)
-# filename_rain = "/scratch/snx3000/mblanc/fmaps_data/rain_season" + season + ".nc"
-# write_to_netcdf(lons, lats, counts_rain, filename_rain)
+lons, lats, counts_SC = seasonal_supercell_tracks_model_fmap(season, skipped_days=skipped_days)
+plot_fmap(lons, lats, counts_SC, "supercell", season=True, year=season, conv=True)
+plot_fmap(lons, lats, counts_SC, "supercell", season=True, year=season, zoom=True, conv=True)
+filename_SC = "/scratch/snx3000/mblanc/fmaps_data/" + method + "/SC_season" + season + "_filtered.nc"
+write_to_netcdf(lons, lats, counts_SC, filename_SC)
 
 #==================================================================================================================================================
 # seasonal map from stored data
 
 #season = "2017"
 # years = ["2011", "2012", "2013", "2014", "2015", "2016", "2017", "2018", "2019", "2020", "2021"]
+# method = "model_masks"
 
 # for season in years:
     
-#     with xr.open_dataset("/scratch/snx3000/mblanc/fmaps_data/meso_season" + season + ".nc") as dset:
+#     with xr.open_dataset("/scratch/snx3000/mblanc/fmaps_data/" + method + "/meso_season" + season + ".nc") as dset:
 #         counts_meso = dset['frequency_map']
 #         lons = dset['lon'].values
 #         lats = dset['lat'].values
 #     plot_fmap(lons, lats, counts_meso, "mesocyclone", season=True, year=season, conv=True)
 #     plot_fmap(lons, lats, counts_meso, "mesocyclone", season=True, year=season, zoom=True, conv=True)
 
-#     with xr.open_dataset("/scratch/snx3000/mblanc/fmaps_data/SC_season" + season + "_filtered.nc") as dset:
+#     with xr.open_dataset("/scratch/snx3000/mblanc/fmaps_data/" + method + "/SC_season" + season + "_filtered.nc") as dset:
 #         counts_SC = dset['frequency_map']
 #     plot_fmap(lons, lats, counts_SC, "supercell", season=True, year=season, filtering=True, conv=True)
 #     plot_fmap(lons, lats, counts_SC, "supercell", season=True, year=season, zoom=True, filtering=True, conv=True)
@@ -393,16 +569,17 @@ def write_to_netcdf(lons, lats, counts, filename):
 # decadal frequency map from stored data
 
 #years = ["2011", "2012", "2013", "2014", "2015", "2016", "2017", "2018", "2019", "2020", "2021"]
+# method = "model_masks"
 
 ## mesocyclone map
 # for i, year in enumerate(years):
 #     if i == 0:
-#         with xr.open_dataset("/scratch/snx3000/mblanc/fmaps_data/meso_season" + year + ".nc") as dset:
+#         with xr.open_dataset("/scratch/snx3000/mblanc/fmaps_data/" + method + "/meso_season" + year + ".nc") as dset:
 #             counts_meso = dset['frequency_map']
 #             lons = dset['lon'].values
 #             lats = dset['lat'].values
 #     else:
-#         with xr.open_dataset("/scratch/snx3000/mblanc/fmaps_data/meso_season" + year + ".nc") as dset:
+#         with xr.open_dataset("/scratch/snx3000/mblanc/fmaps_data/" + method + "/meso_season" + year + ".nc") as dset:
 #             counts = dset['frequency_map']
 #         counts_meso += counts
 
@@ -412,12 +589,12 @@ def write_to_netcdf(lons, lats, counts, filename):
 # # supercell map 
 # for i, year in enumerate(years):
 #     if i == 0:
-#         with xr.open_dataset("/scratch/snx3000/mblanc/fmaps_data/SC_season" + year + ".nc") as dset:
+#         with xr.open_dataset("/scratch/snx3000/mblanc/fmaps_data/" + method + "/SC_season" + year + "_filtered.nc") as dset:
 #             counts_SC = dset['frequency_map']
 #             lons = dset['lon'].values
 #             lats = dset['lat'].values
 #     else:
-#         with xr.open_dataset("/scratch/snx3000/mblanc/fmaps_data/SC_season" + year + ".nc") as dset:
+#         with xr.open_dataset("/scratch/snx3000/mblanc/fmaps_data/" + method + "/SC_season" + year + "_filtered.nc") as dset:
 #             counts = dset['frequency_map']
 #         counts_SC += counts
 

@@ -8,11 +8,14 @@ import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 from scipy.signal import convolve2d
 from skimage.morphology import disk
+import argparse
+from matplotlib.colors import TwoSlopeNorm
+from matplotlib import gridspec
 
 #==================================================================================================================================================
 # FUNCTIONS
 #==================================================================================================================================================
-def plot_fmap(lons, lats, fmap, typ, season=False, year=None, zoom=False, filtering=False, conv=False):
+def plot_fmap(lons, lats, fmap, typ, season=False, year=None, zoom=False, filtering=False, conv=True):
     """
     Plots the desired decadal (default) or seasonal frequency map and saves the figure
     
@@ -94,6 +97,7 @@ def plot_fmap(lons, lats, fmap, typ, season=False, year=None, zoom=False, filter
     else:
         
         if zoom:
+            # adjust the number of years !!!
             zl, zr, zb, zt = 750, 400, 570, 700 #cut for Alpine region
             cont = plt.pcolormesh(lons[zb:-zt,zl:-zr], lats[zb:-zt,zl:-zr], fmap[zb:-zt,zl:-zr]/11, cmap="Reds", transform=ccrs.PlateCarree())
             if filtering and conv:
@@ -105,6 +109,7 @@ def plot_fmap(lons, lats, fmap, typ, season=False, year=None, zoom=False, filter
             else:
                 figname = "decadal_" + typ + "_alps.png"
         else:
+            # adjust the number of years !!!
             zl, zr, zb, zt = 180, 25, 195, 25 #smart cut for entire domain
             cont = plt.pcolormesh(lons[zb:-zt,zl:-zr], lats[zb:-zt,zl:-zr], fmap[zb:-zt,zl:-zr]/11, cmap="Reds", transform=ccrs.PlateCarree())
             if filtering and conv:
@@ -223,7 +228,7 @@ def seasonal_supercell_tracks_model_fmap(season, filtering=True, skipped_days=No
                 SC_lats = SC['cell_lat']
             
             for j in range(len(SC_lons)): # for each SC centre of mass location
-                distances = np.sqrt((lons - SC_lons[j])**2 + (lats - SC_lats[j])**2) # interpolate it from the lon-lat coords to the grid indices
+                distances = (lons - SC_lons[j])**2 + (lats - SC_lats[j])**2 # interpolate it from the lon-lat coords to the grid indices
                 k,l = np.unravel_index(np.argmin(distances), distances.shape) #indices on grid corresponding to the SC centre of mass interpolation
                 counts_SC[k-1+fp_ind[:,0], l-1+fp_ind[:,1]] = 1 # the 4-connectivity disk around centre of mass as proxy of SC core
             
@@ -288,10 +293,12 @@ def seasonal_supercell_tracks_obs_fmap(start_day, end_day):
         for SC_ID in SC_ids:
             counts_SC = np.zeros_like(lons, dtype=int) # initialise an intermediate counts matrix for this SC, which will contain its track footprint; this incidentally avoids overlaps
             SC_lons = selection['lon'][selection['ID'] == SC_ID] # get the lon-lat coordinates of the SC track
+            SC_lons = np.reshape(SC_lons, len(SC_lons))
             SC_lats = selection['lat'][selection['ID'] == SC_ID]
+            SC_lats = np.reshape(SC_lats, len(SC_lats))
             
             for j in range(len(SC_lons)): # for each SC centroid location
-                distances = np.sqrt((lons - SC_lons[j])**2 + (lats - SC_lats[j])**2) # interpolate it from the lon-lat coords to the grid indices
+                distances = (lons - SC_lons[j])**2 + (lats - SC_lats[j])**2 # interpolate it from the lon-lat coords to the grid indices
                 k,l = np.unravel_index(np.argmin(distances), distances.shape) #indices on grid corresponding to the SC centroid interpolation
                 counts_SC[k-1+fp_ind[:,0], l-1+fp_ind[:,1]] = 1 # the 4-connectivity disk around centre of mass as proxy of SC core
             
@@ -315,10 +322,12 @@ def seasonal_supercell_tracks_obs_fmap(start_day, end_day):
         for SC_ID in SC_ids:
             counts_SC = np.zeros_like(lons, dtype=int) # initialise an intermediate counts matrix for this SC, which will contain its track footprint; this incidentally avoids overlaps
             SC_lons = selection['lon'][selection['ID'] == SC_ID] # get the lon-lat coordinates of the SC track
+            SC_lons = np.reshape(SC_lons, len(SC_lons))
             SC_lats = selection['lat'][selection['ID'] == SC_ID]
+            SC_lats = np.reshape(SC_lats, len(SC_lats))
             
             for j in range(len(SC_lons)): # for each SC centroid location
-                distances = np.sqrt((lons - SC_lons[j])**2 + (lats - SC_lats[j])**2) # interpolate it from the lon-lat coords to the grid indices
+                distances = (lons - SC_lons[j])**2 + (lats - SC_lats[j])**2 # interpolate it from the lon-lat coords to the grid indices
                 k,l = np.unravel_index(np.argmin(distances), distances.shape) #indices on grid corresponding to the SC centroid interpolation
                 counts_SC[k-1+fp_ind[:,0], l-1+fp_ind[:,1]] = 1 # the 4-connectivity disk around centre of mass as proxy of SC core
             
@@ -514,15 +523,119 @@ def write_to_netcdf(lons, lats, counts, filename):
     ds.to_netcdf(filename, encoding={'frequency_map': {'zlib': True, 'complevel': 9}})
 
 
+def supercell_tracks_model_obs_comp_2016_2021_fmaps(conv=True, save=False):
+    """
+    Computes the sub-period 2016-2021 observational and modelled supercell frequency maps using tracks method over the Apline region
+    Assumes the model seasonal maps are already computed and stored
+    Takes care of overlaps by default
+    filtering of model data depends on the stored seasonal maps
+    
+    Parameters
+    ----------
+    conv : bool
+        False: number of storms per grid box, ie per 4.84 km^2; True: 4-connectivity sum convolution yields the number of storms per 24.2 km^2
+    save : bool
+        option to save the figure
+
+    Returns
+    -------
+    plots the 2 maps in a subplot figure and saves it if requested
+    """
+    
+    years = ["2016", "2017", "2018", "2019", "2020", "2021"]
+    
+    # model data : April-September seasonal maps already stored
+    for i, year in enumerate(years):
+        if i == 0:
+            with xr.open_dataset("/scratch/snx3000/mblanc/fmaps_data/model_tracks/SC_season" + year + "_filtered.nc") as dset:
+                counts_model = dset['frequency_map']
+                lons = dset['lon'].values
+                lats = dset['lat'].values
+        else:
+            with xr.open_dataset("/scratch/snx3000/mblanc/fmaps_data/model_tracks/SC_season" + year + "_filtered.nc") as dset:
+                counts = dset['frequency_map']
+            counts_model += counts
+        
+    # obs data : April-September seasonal maps to be computed
+    for i, year in enumerate(years):
+        start_day = year + "0401"
+        end_day = year + "0930"
+        if i == 0:
+            _, _, counts_obs = seasonal_supercell_tracks_obs_fmap(start_day, end_day)
+        else:
+            _, _, counts = seasonal_supercell_tracks_obs_fmap(start_day, end_day)
+            counts_obs += counts
+    
+    # convert the counts per year
+    counts_obs = counts_obs/6
+    counts_model = counts_model/6
+    
+    # convolution
+    if conv:
+        footprint = disk(1) # 4-connectivity
+        counts_model = convolve2d(counts_model, footprint, mode='same') # sum the number of counts over the central and 4 neighbouring grid points
+        counts_obs = convolve2d(counts_obs, footprint, mode='same') # sum the number of counts over the central and 4 neighbouring grid points
+    
+    # colorbar parameters
+    max_count = max(np.max(counts_model), np.max(counts_obs))
+    norm = TwoSlopeNorm(vmin=0, vcenter=0.5*max_count, vmax=max_count)
+    
+    # load geographic features
+    resol = '10m'  # use data at this scale
+    bodr = cfeature.NaturalEarthFeature(category='cultural', name='admin_0_boundary_lines_land', scale=resol, facecolor='none', alpha=0.5)
+    coastline = cfeature.NaturalEarthFeature('physical', 'coastline', scale=resol, facecolor='none')
+    zl, zr, zb, zt = 780, 550, 630, 720 # cut for swiss radar network
+    
+    # figure
+    fig = plt.figure(figsize=(12, 5))
+    gs = gridspec.GridSpec(1, 3, width_ratios=[1, 1, 0.05])
+
+    # Subplot 1
+    ax1 = plt.subplot(gs[0], projection=ccrs.PlateCarree())
+    ax1.add_feature(bodr, linestyle='-', edgecolor='k', alpha=1, linewidth=0.2)
+    ax1.add_feature(coastline, linestyle='-', edgecolor='k', linewidth=0.2)
+    cont_model = ax1.pcolormesh(lons[zb:-zt, zl:-zr], lats[zb:-zt, zl:-zr], counts_model[zb:-zt, zl:-zr], norm=norm, cmap="Reds", transform=ccrs.PlateCarree())
+    ax1.set_title("modelled supercells")
+
+    # Subplot 2
+    ax2 = plt.subplot(gs[1], projection=ccrs.PlateCarree(), sharex=ax1, sharey=ax1)
+    ax2.add_feature(bodr, linestyle='-', edgecolor='k', alpha=1, linewidth=0.2)
+    ax2.add_feature(coastline, linestyle='-', edgecolor='k', linewidth=0.2)
+    cont_obs = ax2.pcolormesh(lons[zb:-zt, zl:-zr], lats[zb:-zt, zl:-zr], counts_obs[zb:-zt, zl:-zr], norm=norm, cmap="Reds", transform=ccrs.PlateCarree())
+    ax2.set_title("observed supercells")
+
+    # Colorbar
+    cbar_ax = plt.subplot(gs[2])
+    if conv:
+        plt.colorbar(cont_obs, cax=cbar_ax, orientation='vertical', label=r"number of supercells per year per 24.2 $km^2$")
+    else:
+        plt.colorbar(cont_obs, cax=cbar_ax, orientation='vertical', label=r"number of supercells per year per 4.84 $km^2$")
+    # obs has more counts than model so we use the obs frequency maps as the base for the colorbar
+    
+    # Adjust layout
+    plt.tight_layout(rect=[0, 0, 1, 1])  # Adjust the rectangle to make room for suptitle
+    
+    # Suptitle
+    fig.suptitle("2016-2021 April-September", fontsize=14)
+    
+    if save:
+        fig.savefig("2016_2021_model_obs_comp_SCfmaps.png", dpi=300)
+    
 #==================================================================================================================================================
 # MAIN
 #==================================================================================================================================================
 # create data and plot and store them
 
-skipped_days = ['20120604', '20140923', '20150725', '20160927', '20170725']
+## model data ##
+
+# parser = argparse.ArgumentParser()
+# parser.add_argument("season", help="season", type=str)
+# args = parser.parse_args()
+
+# skipped_days = ['20120604', '20140923', '20150725', '20160927', '20170725']
 # climate = "current"
-season = "2011"
-method = "model_tracks"
+# season = args.season
+# method = "model_tracks"
 # resolve_ovl = True #only for rain and supercell types
 # filtering = True #only for supercell type
 
@@ -538,11 +651,29 @@ method = "model_tracks"
 # filename_SC = "/scratch/snx3000/mblanc/fmaps_data/" + method + "/SC_season" + season + "_filtered.nc"
 # write_to_netcdf(lons, lats, counts_SC, filename_SC)
 
-lons, lats, counts_SC = seasonal_supercell_tracks_model_fmap(season, skipped_days=skipped_days)
-plot_fmap(lons, lats, counts_SC, "supercell", season=True, year=season, conv=True)
-plot_fmap(lons, lats, counts_SC, "supercell", season=True, year=season, zoom=True, conv=True)
-filename_SC = "/scratch/snx3000/mblanc/fmaps_data/" + method + "/SC_season" + season + "_filtered.nc"
-write_to_netcdf(lons, lats, counts_SC, filename_SC)
+# lons, lats, counts_SC = seasonal_supercell_tracks_model_fmap(season, skipped_days=skipped_days)
+# plot_fmap(lons, lats, counts_SC, "supercell", season=True, year=season, filtering=True, conv=True)
+# plot_fmap(lons, lats, counts_SC, "supercell", season=True, year=season, zoom=True, filtering=True, conv=True)
+# filename_SC = "/scratch/snx3000/mblanc/fmaps_data/" + method + "/SC_season" + season + "_filtered.nc"
+# write_to_netcdf(lons, lats, counts_SC, filename_SC)
+
+## obs data ##
+
+# parser = argparse.ArgumentParser()
+# parser.add_argument("start_day", help="start day", type=str)
+# parser.add_argument("end_day", help="end day", type=str)
+# args = parser.parse_args()
+
+# method = "obs_tracks"
+# start_day = args.start_day
+# end_day = args.end_day
+# season = pd.to_datetime(start_day).strftime("%Y")
+
+# lons, lats, counts_SC = seasonal_supercell_tracks_obs_fmap(start_day, end_day)
+# plot_fmap(lons, lats, counts_SC, "supercell", season=True, year=season, conv=True)
+# plot_fmap(lons, lats, counts_SC, "supercell", season=True, year=season, zoom=True, conv=True)
+# filename_SC = "/scratch/snx3000/mblanc/fmaps_data/" + method + "/Apr-Oct/SC_season" + season + ".nc"
+# write_to_netcdf(lons, lats, counts_SC, filename_SC)
 
 #==================================================================================================================================================
 # seasonal map from stored data
@@ -568,8 +699,9 @@ write_to_netcdf(lons, lats, counts_SC, filename_SC)
 #==================================================================================================================================================
 # decadal frequency map from stored data
 
-#years = ["2011", "2012", "2013", "2014", "2015", "2016", "2017", "2018", "2019", "2020", "2021"]
-# method = "model_masks"
+# years = ["2011", "2012", "2013", "2014", "2015", "2016", "2017", "2018", "2019", "2020", "2021"]
+#years = ["2016", "2017", "2018", "2019", "2020", "2021", "2022"]
+#method = "obs_tracks"
 
 ## mesocyclone map
 # for i, year in enumerate(years):
@@ -586,17 +718,17 @@ write_to_netcdf(lons, lats, counts_SC, filename_SC)
 # plot_fmap(lons, lats, counts_meso, "mesocyclone", conv=True)
 # plot_fmap(lons, lats, counts_meso, "mesocyclone", zoom=True, conv=True)
 
-# # supercell map 
+# supercell map 
 # for i, year in enumerate(years):
 #     if i == 0:
-#         with xr.open_dataset("/scratch/snx3000/mblanc/fmaps_data/" + method + "/SC_season" + year + "_filtered.nc") as dset:
+#         with xr.open_dataset("/scratch/snx3000/mblanc/fmaps_data/" + method + "/Apr-Oct/SC_season" + year + ".nc") as dset:
 #             counts_SC = dset['frequency_map']
 #             lons = dset['lon'].values
 #             lats = dset['lat'].values
 #     else:
-#         with xr.open_dataset("/scratch/snx3000/mblanc/fmaps_data/" + method + "/SC_season" + year + "_filtered.nc") as dset:
+#         with xr.open_dataset("/scratch/snx3000/mblanc/fmaps_data/" + method + "/Apr-Oct/SC_season" + year + ".nc") as dset:
 #             counts = dset['frequency_map']
 #         counts_SC += counts
 
-# plot_fmap(lons, lats, counts_SC, "supercell", filtering=True, conv=True)
-# plot_fmap(lons, lats, counts_SC, "supercell", zoom=True, filtering=True, conv=True)
+# #plot_fmap(lons, lats, counts_SC, "supercell", conv=True)
+# plot_fmap(lons, lats, counts_SC, "supercell", zoom=True, conv=True)

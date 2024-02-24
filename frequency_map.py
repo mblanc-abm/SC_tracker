@@ -18,6 +18,7 @@ from matplotlib import gridspec
 def plot_fmap(lons, lats, fmap, typ, season=False, year=None, zoom=False, filtering=False, conv=True):
     """
     Plots the desired decadal (default) or seasonal frequency map and saves the figure
+    for the decadal maps expressed in anual average, directly provide the annually averaged counts in nput
     
     Parameters
     ----------
@@ -47,12 +48,13 @@ def plot_fmap(lons, lats, fmap, typ, season=False, year=None, zoom=False, filter
     # bleach the background -> set 0 counts to nans
     # fmap = fmap.astype(float)
     # fmap[fmap==0] = np.nan
-    
+    print(np.min(fmap), np.max(fmap))
     # convolution
     if conv:
         footprint = disk(1) # 4-connectivity
         fmap = convolve2d(fmap, footprint, mode='same') # sum the number of counts over the central and 4 neighbouring grid points
-    
+        print(np.min(fmap), np.max(fmap))
+        
     # load geographic features
     resol = '10m'  # use data at this scale
     bodr = cfeature.NaturalEarthFeature(category='cultural', name='admin_0_boundary_lines_land', scale=resol, facecolor='none', alpha=0.5)
@@ -97,9 +99,8 @@ def plot_fmap(lons, lats, fmap, typ, season=False, year=None, zoom=False, filter
     else:
         
         if zoom:
-            # adjust the number of years !!!
             zl, zr, zb, zt = 750, 400, 570, 700 #cut for Alpine region
-            cont = plt.pcolormesh(lons[zb:-zt,zl:-zr], lats[zb:-zt,zl:-zr], fmap[zb:-zt,zl:-zr]/11, cmap="Reds", transform=ccrs.PlateCarree())
+            cont = plt.pcolormesh(lons[zb:-zt,zl:-zr], lats[zb:-zt,zl:-zr], fmap[zb:-zt,zl:-zr], cmap="Reds", transform=ccrs.PlateCarree())
             if filtering and conv:
                 figname = "decadal_" + typ + "_alps_filtered_conv.png"
             elif filtering and not conv:
@@ -109,9 +110,8 @@ def plot_fmap(lons, lats, fmap, typ, season=False, year=None, zoom=False, filter
             else:
                 figname = "decadal_" + typ + "_alps.png"
         else:
-            # adjust the number of years !!!
             zl, zr, zb, zt = 180, 25, 195, 25 #smart cut for entire domain
-            cont = plt.pcolormesh(lons[zb:-zt,zl:-zr], lats[zb:-zt,zl:-zr], fmap[zb:-zt,zl:-zr]/11, cmap="Reds", transform=ccrs.PlateCarree())
+            cont = plt.pcolormesh(lons[zb:-zt,zl:-zr], lats[zb:-zt,zl:-zr], fmap[zb:-zt,zl:-zr], cmap="Reds", transform=ccrs.PlateCarree())
             if filtering and conv:
                 figname = "decadal_" + typ + "_filtered_conv.png"
             elif filtering and not conv:
@@ -700,8 +700,8 @@ def supercell_tracks_model_obs_comp_2016_2021_fmaps(conv=True, save=False):
 # decadal frequency map from stored data
 
 # years = ["2011", "2012", "2013", "2014", "2015", "2016", "2017", "2018", "2019", "2020", "2021"]
-#years = ["2016", "2017", "2018", "2019", "2020", "2021", "2022"]
-#method = "obs_tracks"
+# years = ["2016", "2017", "2018", "2019", "2020", "2021", "2022"]
+# method = "obs_tracks"
 
 ## mesocyclone map
 # for i, year in enumerate(years):
@@ -715,8 +715,8 @@ def supercell_tracks_model_obs_comp_2016_2021_fmaps(conv=True, save=False):
 #             counts = dset['frequency_map']
 #         counts_meso += counts
 
-# plot_fmap(lons, lats, counts_meso, "mesocyclone", conv=True)
-# plot_fmap(lons, lats, counts_meso, "mesocyclone", zoom=True, conv=True)
+# plot_fmap(lons, lats, counts_meso/11, "mesocyclone", conv=True)
+# plot_fmap(lons, lats, counts_meso/11, "mesocyclone", zoom=True, conv=True)
 
 # supercell map 
 # for i, year in enumerate(years):
@@ -730,5 +730,5 @@ def supercell_tracks_model_obs_comp_2016_2021_fmaps(conv=True, save=False):
 #             counts = dset['frequency_map']
 #         counts_SC += counts
 
-# #plot_fmap(lons, lats, counts_SC, "supercell", conv=True)
-# plot_fmap(lons, lats, counts_SC, "supercell", zoom=True, conv=True)
+# #plot_fmap(lons, lats, counts_SC/7, "supercell", conv=True)
+# plot_fmap(lons, lats, counts_SC/7, "supercell", zoom=True, conv=True)

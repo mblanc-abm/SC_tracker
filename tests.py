@@ -56,7 +56,7 @@ with xr.open_dataset(fs) as dset:
 
 #================================================================================================================================
 ## test find_overlaps
-maskfile = "/scratch/snx3000/mblanc/cell_tracker/CaseStudies/outfiles/cell_masks_" + dt.strftime("%Y%m%d") + ".nc"
+maskfile = "/project/pr133/mblanc/cell_tracker/CaseStudies/outfiles/cell_masks_" + dt.strftime("%Y%m%d") + ".nc"
 with xr.open_dataset(maskfile) as dset:
     masks = dset['cell_mask'] # 3D matrix
     times = pd.to_datetime(dset['time'].values)
@@ -82,38 +82,33 @@ overlaps = find_overlaps(iuh, labeled, mask, aura, printout=True)
 # load geographic features
 resol = '10m'  # use data at this scale
 bodr = cfeature.NaturalEarthFeature(category='cultural', name='admin_0_boundary_lines_land', scale=resol, facecolor='none', alpha=0.5)
-ocean = cfeature.NaturalEarthFeature('physical', 'ocean', scale=resol, edgecolor='none', facecolor=cfeature.COLORS['water'])
 
 fig = plt.figure(figsize=(6,12))
 
 ax1 = fig.add_subplot(3, 1, 1, projection=ccrs.PlateCarree())
 ax1.add_feature(bodr, linestyle='-', edgecolor='k', alpha=1, linewidth=0.2)
-ax1.add_feature(ocean, linewidth=0.2)
 cont_iuh = ax1.pcolormesh(lons, lats, iuh, cmap="RdBu_r", norm=norm_iuh, transform=ccrs.PlateCarree())
-plt.colorbar(cont_iuh, ticks=ticks_iuh, orientation='horizontal', label=r"IUH ($m^2/s^2$)")
+plt.colorbar(cont_iuh, ticks=ticks_iuh, extend='both', orientation='horizontal', label=r"IUH ($m^2/s^2$)")
 plt.title(dt.strftime("%d/%m/%Y %H:%M:%S"))
 
 ax2 = fig.add_subplot(3, 1, 2, projection=ccrs.PlateCarree())
 cont = ax2.contourf(lons, lats, labeled_disp, cmap=cmap_lab, levels=levels_lab, transform=ccrs.PlateCarree())
 ax2.add_feature(bodr, linestyle='-', edgecolor='k', alpha=1, linewidth=0.2)
-ax2.add_feature(ocean, linewidth=0.2)
 plt.colorbar(cont, ticks=ticks_lab, orientation='horizontal', label="supercells labels, aura="+str(aura))
 
 ax3 = fig.add_subplot(3, 1, 3, projection=ccrs.PlateCarree())
 cont_mask = ax3.contourf(lons, lats, mask, levels=levels_mask, cmap=cmap_mask, transform=ccrs.PlateCarree())
 ax3.add_feature(bodr, linestyle='-', edgecolor='k', alpha=1, linewidth=0.2)
-ax3.add_feature(ocean, linewidth=0.2)
 cbar = plt.colorbar(cont_mask, ticks=ticks_mask, orientation='horizontal', label="Cell mask")
 cbar.locator = MultipleLocator(base=5)
+
+fig.savefig("20170801210000_IUH_mesom_rainm.png", dpi=300)
 
 
 #================================================================================================================================
 ## test meso masks
 
-day = "20120630"
-tim = "220000" #time slice considered
-
-with xr.open_dataset("/scratch/snx3000/mblanc/SDT_output/CaseStudies/meso_masks_" + day + ".nc") as dset:
+with xr.open_dataset("/scratch/snx3000/mblanc/SDT_output/seasons/2020/meso_masks_20200401.nc") as dset:
     meso_masks = dset['meso_mask']
     lats = dset['lat']
     lons = dset['lon']

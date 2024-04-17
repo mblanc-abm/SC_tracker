@@ -22,7 +22,6 @@ import os
 import xarray as xr
 import pandas as pd
 #import numpy as np
-import time
 
 #====================================================================================================================
 
@@ -54,7 +53,7 @@ def main(outpath, start_day, end_day, climate, skipped_days=None):
         print("preparing data")
         
         # make timesteps: extract hourly timesteps from 4am of the current day to 3am of the subsequent day
-        mask_path = "/scratch/snx3000/mblanc/cell_tracker_output/" + climate + "_climate/cell_masks_" + day.strftime("%Y%m%d") + ".nc"
+        mask_path = "/scratch/snx3000/mblanc/CT2/oufiles/" + "cell_masks_" + day.strftime("%Y%m%d") + ".nc"
         #mask_path = "/project/pr133/mblanc/cell_tracker_output/" + climate + "_climate/cell_masks_" + day.strftime("%Y%m%d") + ".nc"
         with xr.open_dataset(mask_path) as dset:
             times_5min = pd.to_datetime(dset['time'].values)
@@ -63,10 +62,10 @@ def main(outpath, start_day, end_day, climate, skipped_days=None):
         # make 1h_3D (pressure level), 1h_2D (surface pressure and max surface wind),and 5min_2D (max hail) files names
         fnames_p = []
         fnames_s = []
-        fnames_h = []
+        #fnames_h = []
         path_p = "/scratch/snx3000/mblanc/SDT_input/" + climate + "_climate/1h_3D_plev/lffd"
         path_s = "/scratch/snx3000/mblanc/SDT_input/" + climate + "_climate/1h_2D/lffd"
-        path_h = "/scratch/snx3000/mblanc/SDT_input/" + climate + "_climate/5min_2D/lffd"
+        #path_h = "/scratch/snx3000/mblanc/SDT_input/" + climate + "_climate/5min_2D/lffd"
         
         # # original paths in PROJECT 
         # if climate == "current":
@@ -82,17 +81,17 @@ def main(outpath, start_day, end_day, climate, skipped_days=None):
             fnames_p.append(path_p + dt.strftime("%Y%m%d%H%M%S") + "p.nc")
             fnames_s.append(path_s + dt.strftime("%Y%m%d%H%M%S") + ".nc")
         
-        for dt in times_5min:
-            fnames_h.append(path_h + dt.strftime("%Y%m%d%H%M%S") + ".nc")
+        # for dt in times_5min:
+        #     fnames_h.append(path_h + dt.strftime("%Y%m%d%H%M%S") + ".nc")
         
         # make rain mask and tracks file names
         rain_masks_name = mask_path  
         #rain_tracks_name = "/project/pr133/mblanc/cell_tracker_output/" + climate + "_climate/cell_tracks_" + day.strftime("%Y%m%d") + ".json"
-        rain_tracks_name = "/scratch/snx3000/mblanc/cell_tracker_output/" + climate + "_climate/cell_tracks_" + day.strftime("%Y%m%d") + ".json"
+        rain_tracks_name = "/scratch/snx3000/mblanc/CT2/oufiles/cell_tracks_" + day.strftime("%Y%m%d") + ".json"
         
         # track supercells
         print("tracking supercells")
-        supercells, missed_mesocyclones, lons, lats = track_Scells(timesteps, fnames_p, fnames_s, rain_masks_name, rain_tracks_name, threshold, sub_threshold, min_area, aura, fnames_h)
+        supercells, missed_mesocyclones, lons, lats = track_Scells(day, timesteps, fnames_p, fnames_s, rain_masks_name, rain_tracks_name, threshold, sub_threshold, min_area, aura)
         
         print("writing data to file")
         outfile_json = os.path.join(outpath, "supercell_" + day.strftime("%Y%m%d") + ".json")
@@ -106,16 +105,14 @@ def main(outpath, start_day, end_day, climate, skipped_days=None):
 
 #====================================================================================================================
 
-outpath = "/scratch/snx3000/mblanc/SDT_output/seasons/2012"
-start_day = "20120401"
-end_day = "20120930"
+outpath = "/scratch/snx3000/mblanc/SDT2_output/seasons/2021"
+start_day = "20210401"
+end_day = "20210930"
 climate = "current"
-skipped_days = ['20120604', '20140923', '20150725', '20160927', '20170725']
+#skipped_days = ['20120604', '20140923', '20150725', '20160927', '20170725'] # for CT1
+skipped_days = ['20210505', '20210511', '20210802', '20210804', '20210805', '20210807', '20210901'] # for CT2
 
-start_time = time.time()
 main(outpath, start_day, end_day, climate, skipped_days)
-elapsed_time = time.time() - start_time
-print(elapsed_time)
 
 # if __name__ == "__main__":
 #     p = argparse.ArgumentParser(description="tracks cells")

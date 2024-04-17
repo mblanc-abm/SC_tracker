@@ -44,7 +44,7 @@ def main(outpath, day, hours, cut):
     
     # make timesteps
     timesteps = []
-    for i,h in enumerate(hours):
+    for i, h in enumerate(hours):
         dtstr = day + str(h).zfill(2) + "0000" # YYYYmmddHHMMSS
         timesteps.append(pd.to_datetime(dtstr, format="%Y%m%d%H%M%S"))
     
@@ -63,7 +63,7 @@ def main(outpath, day, hours, cut):
     
     # track supercells
     print("tracking supercells")
-    supercells, missed_mesocyclones, lons, lats = track_Scells(timesteps, fnames_p, fnames_s, rain_masks_name, rain_tracks_name, threshold, sub_threshold, min_area, aura)
+    supercells, missed_mesocyclones, lons, lats = track_Scells(day_obj, timesteps, fnames_p, fnames_s, rain_masks_name, rain_tracks_name, threshold, sub_threshold, min_area, aura)
     
     #write data to output files
     print("writing data to file")
@@ -79,8 +79,8 @@ def main(outpath, day, hours, cut):
 #====================================================================================================================
 
 outpath = "/scratch/snx3000/mblanc/SDT_output/CaseStudies"
-day = "20170801"
-hours = range(18,24)
+day = "20210629"
+hours = range(11,21)
 cut = "largecut"
 
 main(outpath, day, hours, cut)

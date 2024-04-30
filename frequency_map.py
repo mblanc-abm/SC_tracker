@@ -16,7 +16,7 @@ from matplotlib import gridspec
 #==================================================================================================================================================
 # FUNCTIONS
 #==================================================================================================================================================
-def plot_fmap(lons, lats, fmap, typ, season=False, year=None, zoom=False, filtering=False, conv=True, save=False, iuh_thresh=None):
+def plot_fmap(lons, lats, fmap, typ, season=False, year=None, zoom=False, filtering=True, conv=True, save=False, iuh_thresh=None):
     """
     Plots the desired decadal (default) or seasonal frequency map and saves the figure
     for the decadal maps expressed in anual average, directly provide the annually averaged counts in input
@@ -128,7 +128,7 @@ def plot_fmap(lons, lats, fmap, typ, season=False, year=None, zoom=False, filter
 
 def resolve_overlaps(rain_masks):
     """
-    resolves overlaps for frequency map: for every grid point, discards the additional counts of the rain cells overlapping several times
+    resolves overlaps for masks method: for every grid point, discards the additional counts of the rain cells overlapping several times
     with themselves, so that a single, overlapping raintrack only counts as 1
 
     Parameters
@@ -643,16 +643,16 @@ def supercell_tracks_model_obs_comp_2016_2021_fmaps(conv=True, save=False):
 
 # model data ##
 
-parser = argparse.ArgumentParser()
-parser.add_argument("iuh_thresh", type=float)
-args = parser.parse_args()
+# parser = argparse.ArgumentParser()
+# parser.add_argument("iuh_thresh", type=float)
+# args = parser.parse_args()
 
-skipped_days = ['20120604', '20140923', '20150725', '20160927', '20170725']
-climate = "current"
-#season = args.season
-years = ["2011", "2012", "2013", "2014", "2015", "2016", "2017", "2018", "2019", "2020", "2021"]
-method = "model_tracks"
-iuh_thresh = args.iuh_thresh
+# skipped_days = ['20120604', '20140923', '20150725', '20160927', '20170725']
+# climate = "current"
+# #season = args.season
+# years = ["2011", "2012", "2013", "2014", "2015", "2016", "2017", "2018", "2019", "2020", "2021"]
+# method = "model_tracks"
+# iuh_thresh = args.iuh_thresh
 
 # lons, lats, counts_meso = seasonal_masks_fmap(season, "mesocyclone", climate, skipped_days=skipped_days, conv=True)
 # plot_fmap(lons, lats, counts_meso, "mesocyclone", season=True, year=season, zoom=False, conv=True, save=True)
@@ -666,12 +666,12 @@ iuh_thresh = args.iuh_thresh
 # filename_SC = "/scratch/snx3000/mblanc/fmaps_data/" + method + "/SC_season" + season + "_filtered.nc"
 # write_to_netcdf(lons, lats, counts_SC, filename_SC)
 
-for season in years:
-    lons, lats, counts_SC = seasonal_supercell_tracks_model_fmap(season, skipped_days=skipped_days, iuh_thresh=iuh_thresh)
-    plot_fmap(lons, lats, counts_SC, "supercell", season=True, year=season, zoom=False, filtering=True, conv=True, save=True, iuh_thresh=iuh_thresh)
-    plot_fmap(lons, lats, counts_SC, "supercell", season=True, year=season, zoom=True, filtering=True, conv=True, save=True, iuh_thresh=iuh_thresh)
-    filename_SC = "/scratch/snx3000/mblanc/fmaps_data/" + method + "/SC_season" + season + "_filtered_conv_iuhpt" + str(round(iuh_thresh)) + ".nc"
-    write_to_netcdf(lons, lats, counts_SC, filename_SC)
+# for season in years:
+#     lons, lats, counts_SC = seasonal_supercell_tracks_model_fmap(season, skipped_days=skipped_days, iuh_thresh=iuh_thresh)
+#     plot_fmap(lons, lats, counts_SC, "supercell", season=True, year=season, zoom=False, filtering=True, conv=True, save=True, iuh_thresh=iuh_thresh)
+#     plot_fmap(lons, lats, counts_SC, "supercell", season=True, year=season, zoom=True, filtering=True, conv=True, save=True, iuh_thresh=iuh_thresh)
+#     filename_SC = "/scratch/snx3000/mblanc/fmaps_data/" + method + "/SC_season" + season + "_filtered_conv_iuhpt" + str(round(iuh_thresh)) + ".nc"
+#     write_to_netcdf(lons, lats, counts_SC, filename_SC)
 
 ## obs data ##
 
@@ -715,8 +715,9 @@ for season in years:
 # decadal frequency map from stored data
 
 # years = ["2011", "2012", "2013", "2014", "2015", "2016", "2017", "2018", "2019", "2020", "2021"]
-#years = ["2016", "2017", "2018", "2019", "2020", "2021", "2022"]
-#method = "obs_tracks"
+# #years = ["2016", "2017", "2018", "2019", "2020", "2021", "2022"]
+# method = "model_tracks"
+# iuhpts = [85, 95, 105]
 
 # # mesocyclone map
 # for i, year in enumerate(years):
@@ -733,17 +734,19 @@ for season in years:
 # plot_fmap(lons, lats, counts_meso/11, "mesocyclone", zoom=False, conv=False, save=True)
 # plot_fmap(lons, lats, counts_meso/11, "mesocyclone", zoom=True, conv=False, save=True)
 
-# supercell map 
-# for i, year in enumerate(years):
-#     if i == 0:
-#         with xr.open_dataset("/scratch/snx3000/mblanc/fmaps_data/" + method + "/Apr-Oct/SC_season" + year + "_conv.nc") as dset:
-#             counts_SC = dset['frequency_map']
-#             lons = dset['lon'].values
-#             lats = dset['lat'].values
-#     else:
-#         with xr.open_dataset("/scratch/snx3000/mblanc/fmaps_data/" + method + "/Apr-Oct/SC_season" + year + "_conv.nc") as dset:
-#             counts = dset['frequency_map']
-#         counts_SC += counts
+# # supercell map 
+# for iuhpt in iuhpts:
+#     for i, year in enumerate(years):
+#         fname = "/scratch/snx3000/mblanc/fmaps_data/" + method + "/SC_season" + year + "_filtered_conv_iuhpt" + str(iuhpt) + ".nc"
+#         if i == 0:
+#             with xr.open_dataset(fname) as dset:
+#                 counts_SC = dset['frequency_map']
+#                 lons = dset['lon'].values
+#                 lats = dset['lat'].values
+#         else:
+#             with xr.open_dataset(fname) as dset:
+#                 counts = dset['frequency_map']
+#             counts_SC += counts
 
-# #plot_fmap(lons, lats, counts_SC/7, "supercell", zoom=False, filtering=True, conv=True, save=True)
-# plot_fmap(lons, lats, counts_SC/7, "supercell", zoom=True, filtering=False, conv=True, save=True)
+#     plot_fmap(lons, lats, counts_SC/len(years), "supercell", zoom=False, save=True, iuh_thresh=iuhpt)
+#     plot_fmap(lons, lats, counts_SC/len(years), "supercell", zoom=True, save=True, iuh_thresh=iuhpt)

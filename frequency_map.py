@@ -16,7 +16,7 @@ from matplotlib import gridspec
 #==================================================================================================================================================
 # FUNCTIONS
 #==================================================================================================================================================
-def plot_fmap(lons, lats, fmap, typ, season=False, year=None, zoom=False, filtering=True, conv=True, save=False, iuh_thresh=None):
+def plot_fmap(lons, lats, fmap, typ, season=False, year=None, zoom=False, filtering=False, conv=True, save=False, iuh_thresh=None, addname=""):
     """
     Plots the desired decadal (default) or seasonal frequency map and saves the figure
     for the decadal maps expressed in anual average, directly provide the annually averaged counts in input
@@ -46,6 +46,8 @@ def plot_fmap(lons, lats, fmap, typ, season=False, year=None, zoom=False, filter
     iuh_thresh: float
         option to filter out supercell tracks whose mesocyclone peak intensity is weaker than iuh_thresh; default if None, equivalent to 75 m^2/s^2
         displayed in the figure title and name
+    addname: str
+        option to add additional information to figure name
 
     Returns
     -------
@@ -79,7 +81,7 @@ def plot_fmap(lons, lats, fmap, typ, season=False, year=None, zoom=False, filter
             figname += "_conv"
         if iuh_thresh:
             figname += "_iuhpt" + str(round(iuh_thresh))
-        figname += ".png"
+        figname += addname + ".png"
         
         if conv:
             plt.colorbar(cont, orientation='horizontal', label=r"number of " + typ + "s per 24.2 $km^2$")
@@ -107,7 +109,7 @@ def plot_fmap(lons, lats, fmap, typ, season=False, year=None, zoom=False, filter
             figname += "_conv"
         if iuh_thresh:
             figname += "_iuhpt" + str(round(iuh_thresh))
-        figname += ".png"
+        figname += addname + ".png"
         
         if conv:
             plt.colorbar(cont, orientation='horizontal', label=r"number of " + typ + "s per year per 24.2 $km^2$")
@@ -240,6 +242,82 @@ def seasonal_supercell_tracks_model_fmap(season, filtering=True, skipped_days=No
                 counts_SC = dilation(counts_SC, disk(1)) # 4-connectivity dilation -> avoids SC overlaps with themselves
             
             counts_day += counts_SC
+            
+        counts += counts_day
+        
+    return lons, lats, counts
+
+
+def seasonal_rain_tracks_model_fmap(season, path, skipped_days=None, conv=True):
+    """
+    Computes the seasonal rain frequency map using tracks method over the model whole domain
+    Takes care of overlaps by default
+    
+    Parameters
+    ----------
+    season : str
+        considered season, YYYY
+    path : str
+        path to the rain tracks (cell tracker outputs)
+    skipped_days : list of str
+        list of missing days which consequently must be skipped
+    conv : bool
+        False: number of storms per grid box, ie per 4.84 km^2; True: 4-connectivity sum convolution yields the number of storms per 24.2 km^2
+    
+    Returns
+    -------
+    lons : 2D array
+        longitude at each gridpoint
+    lats : 2D array
+        latitude at each gridpoint
+    counts : 2D array
+        the desired seasonal rain frequency map
+    """
+    
+    start_day = pd.to_datetime(season + "0401")
+    end_day = pd.to_datetime(season + "0930")
+    daylist = pd.date_range(start_day, end_day)
+    
+    # remove skipped days from daylist
+    if skipped_days:
+        skipped_days = pd.to_datetime(skipped_days, format="%Y%m%d")
+        daylist = [day for day in daylist if day not in skipped_days]
+    
+    # load lons and lats static fields
+    with xr.open_dataset("/scratch/snx3000/mblanc/fmaps_data/model_masks/meso_season2011.nc") as dset:
+        lons = dset["lon"].values
+        lats = dset["lat"].values
+    
+    counts = np.zeros_like(lons, dtype=int) # initialise the counts matrix
+    fp_ind = np.argwhere(disk(1)) # footprint: 4-connectivity; will serve for marking the supercell core footprin
+    
+    files = []
+    for day in daylist:
+        files.append(path + "cell_tracks_" + day.strftime("%Y%m%d") + ".json")
+    
+    # loop over the days of the season
+    for file in files:
+        # initialise an intermediate counts matrix for this day, which will contain its supercells tracks footprint; this incidentally avoids overlaps
+        counts_day = np.zeros_like(lons, dtype=int) 
+        
+        # load the supercells of the given day
+        with open(file, "r") as read_file:
+            info = json.load(read_file)['cell_data']
+        
+        # loop over the supercells of the day
+        for cell in info:
+            
+            # initialise an intermediate counts matrix for this SC, which will contain its track footprint; this incidentally avoids overlaps
+            counts = np.zeros_like(lons, dtype=int)
+            cell_lons = cell['lon']
+            cell_lats = cell['lat']
+            
+            for j in range(len(cell_lons)): # for each SC centre of mass location
+                distances = (lons - cell_lons[j])**2 + (lats - cell_lats[j])**2 # interpolate it from the lon-lat coords to the grid indices
+                k,l = np.unravel_index(np.argmin(distances), distances.shape) #indices on grid corresponding to the SC centre of mass interpolation
+                counts[k-1+fp_ind[:,0], l-1+fp_ind[:,1]] = 1 # the 4-connectivity disk around centre of mass as proxy of SC core
+            
+            counts_day += counts
             
         counts += counts_day
         
@@ -750,3 +828,15 @@ def supercell_tracks_model_obs_comp_2016_2021_fmaps(conv=True, save=False):
 
 #     plot_fmap(lons, lats, counts_SC/len(years), "supercell", zoom=False, save=True, iuh_thresh=iuhpt)
 #     plot_fmap(lons, lats, counts_SC/len(years), "supercell", zoom=True, save=True, iuh_thresh=iuhpt)
+
+#==================================================================================================================================================
+# seasonal rain frequency map
+
+season = "2021"
+#path = "/scratch/snx3000/mblanc/CT2/current_climate/outfiles/"
+path = "/scratch/snx3000/mblanc/CT1_output/"
+typ = "rain"
+
+lons, lats, counts = seasonal_rain_tracks_model_fmap(season, path)
+plot_fmap(lons, lats, counts, typ, season=True, year=season, zoom=True, filtering=False, conv=True, save=True, iuh_thresh=None, addname="CT1")
+plot_fmap(lons, lats, counts, typ, season=True, year=season, zoom=False, filtering=False, conv=True, save=True, iuh_thresh=None, addname="CT1")

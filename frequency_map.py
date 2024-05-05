@@ -288,12 +288,12 @@ def seasonal_rain_tracks_model_fmap(season, path, skipped_days=None, conv=True):
         lons = dset["lon"].values
         lats = dset["lat"].values
     
-    counts = np.zeros_like(lons, dtype=int) # initialise the counts matrix
-    fp_ind = np.argwhere(disk(1)) # footprint: 4-connectivity; will serve for marking the supercell core footprin
-    
     files = []
     for day in daylist:
         files.append(path + "cell_tracks_" + day.strftime("%Y%m%d") + ".json")
+    
+    counts = np.zeros_like(lons, dtype=int) # initialise the counts matrix
+    fp_ind = np.argwhere(disk(1)) # footprint: 4-connectivity; will serve for marking the supercell core footprin
     
     # loop over the days of the season
     for file in files:
@@ -307,17 +307,20 @@ def seasonal_rain_tracks_model_fmap(season, path, skipped_days=None, conv=True):
         # loop over the supercells of the day
         for cell in info:
             
-            # initialise an intermediate counts matrix for this SC, which will contain its track footprint; this incidentally avoids overlaps
-            counts = np.zeros_like(lons, dtype=int)
+            # initialise an intermediate counts matrix for this cell, which will contain its track footprint; this incidentally avoids overlaps
+            counts_cell = np.zeros_like(lons, dtype=int)
             cell_lons = cell['lon']
             cell_lats = cell['lat']
             
-            for j in range(len(cell_lons)): # for each SC centre of mass location
+            for j in range(len(cell_lons)): # for each cell centre of mass location
                 distances = (lons - cell_lons[j])**2 + (lats - cell_lats[j])**2 # interpolate it from the lon-lat coords to the grid indices
-                k,l = np.unravel_index(np.argmin(distances), distances.shape) #indices on grid corresponding to the SC centre of mass interpolation
-                counts[k-1+fp_ind[:,0], l-1+fp_ind[:,1]] = 1 # the 4-connectivity disk around centre of mass as proxy of SC core
+                k,l = np.unravel_index(np.argmin(distances), distances.shape) #indices on grid corresponding to the cell centre of mass interpolation
+                counts_cell[k-1+fp_ind[:,0], l-1+fp_ind[:,1]] = 1 # the 4-connectivity disk around centre of mass as proxy of cell core
             
-            counts_day += counts
+            if conv:
+                counts_cell = dilation(counts_cell, disk(1)) # 4-connectivity dilation -> avoids SC overlaps with themselves
+            
+            counts_day += counts_cell
             
         counts += counts_day
         
@@ -833,10 +836,18 @@ def supercell_tracks_model_obs_comp_2016_2021_fmaps(conv=True, save=False):
 # seasonal rain frequency map
 
 season = "2021"
-#path = "/scratch/snx3000/mblanc/CT2/current_climate/outfiles/"
-path = "/scratch/snx3000/mblanc/CT1_output/"
+path2 = "/scratch/snx3000/mblanc/CT2/current_climate/outfiles/"
+path1 = "/scratch/snx3000/mblanc/CT1_output/"
 typ = "rain"
+filename2 = "/scratch/snx3000/mblanc/fmaps_data/model_tracks/rain_season" + season + "_conv_CT2.nc"
+filename1 = "/scratch/snx3000/mblanc/fmaps_data/model_tracks/rain_season" + season + "_conv_CT1.nc"
 
-lons, lats, counts = seasonal_rain_tracks_model_fmap(season, path)
-plot_fmap(lons, lats, counts, typ, season=True, year=season, zoom=True, filtering=False, conv=True, save=True, iuh_thresh=None, addname="CT1")
-plot_fmap(lons, lats, counts, typ, season=True, year=season, zoom=False, filtering=False, conv=True, save=True, iuh_thresh=None, addname="CT1")
+
+lons, lats, counts2 = seasonal_rain_tracks_model_fmap(season, path2)
+_, _, counts1 = seasonal_rain_tracks_model_fmap(season, path1)
+plot_fmap(lons, lats, counts2, typ, season=True, year=season, zoom=True, filtering=False, conv=True, save=True, iuh_thresh=None, addname="CT2")
+plot_fmap(lons, lats, counts2, typ, season=True, year=season, zoom=False, filtering=False, conv=True, save=True, iuh_thresh=None, addname="CT2")
+plot_fmap(lons, lats, counts1, typ, season=True, year=season, zoom=True, filtering=False, conv=True, save=True, iuh_thresh=None, addname="CT1")
+plot_fmap(lons, lats, counts1, typ, season=True, year=season, zoom=False, filtering=False, conv=True, save=True, iuh_thresh=None, addname="CT1")
+write_to_netcdf(lons, lats, counts2, filename2)
+write_to_netcdf(lons, lats, counts1, filename1)

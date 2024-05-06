@@ -16,17 +16,17 @@ from matplotlib import gridspec
 #==================================================================================================================================================
 # FUNCTIONS
 #==================================================================================================================================================
-def plot_fmap(lons, lats, fmap, typ, season=False, year=None, zoom=False, filtering=False, conv=True, save=False, iuh_thresh=None, addname="", maxval=None):
+def plot_fmap(rlons, rlats, fmap, typ, season=False, year=None, zoom=False, filtering=False, conv=True, save=False, iuh_thresh=None, addname="", maxval=None):
     """
     Plots the desired decadal (default) or seasonal frequency map and saves the figure
     for the decadal maps expressed in anual average, directly provide the annually averaged counts in input
     
     Parameters
     ----------
-    lons : 2D array
-        longitude at each gridpoint
-    lats : 2D array
-        latitude at each gridpoint
+    rlons : 2D array
+        rotated longitude at each gridpoint
+    rlats : 2D array
+        rotated latitude at each gridpoint
     fmap : 2D array
         the frequency / distribution map to be plotted
         filtering and convolution/dilation processes are assumed to be beforehand handled, ie fmap ready to be plotted
@@ -60,9 +60,14 @@ def plot_fmap(lons, lats, fmap, typ, season=False, year=None, zoom=False, filter
     resol = '10m'  # use data at this scale
     bodr = cfeature.NaturalEarthFeature(category='cultural', name='admin_0_boundary_lines_land', scale=resol, facecolor='none', alpha=0.5)
     coastline = cfeature.NaturalEarthFeature('physical', 'coastline', scale=resol, facecolor='none')
+    rp = ccrs.RotatedPole(pole_longitude = -170, pole_latitude = 43)
     
-    fig = plt.figure()
-    ax = plt.axes(projection=ccrs.PlateCarree())
+    if zoom:
+        fig = plt.figure(figsize=(10,10))
+    else:
+        fig = plt.figure(figsize=(10,8))
+    
+    ax = plt.axes(projection=rp)
     ax.add_feature(bodr, linestyle='-', edgecolor='k', alpha=1, linewidth=0.2)
     ax.add_feature(coastline, linestyle='-', edgecolor='k', linewidth=0.2)
     
@@ -76,10 +81,15 @@ def plot_fmap(lons, lats, fmap, typ, season=False, year=None, zoom=False, filter
     if zoom:
         zl, zr, zb, zt = 750, 400, 570, 700 #cut for Alpine region
         figname += "_alps"
+        cbar_orientation = "horizontal"
     else:
         zl, zr, zb, zt = 180, 25, 195, 25 #smart cut for entire domain
+        cbar_orientation = "vertical"
     
-    cont = plt.pcolormesh(lons[zb:-zt,zl:-zr], lats[zb:-zt,zl:-zr], fmap[zb:-zt,zl:-zr], cmap="Reds", transform=ccrs.PlateCarree())
+    if maxval:
+        cont = ax.pcolormesh(rlons[zb:-zt,zl:-zr], rlats[zb:-zt,zl:-zr], fmap[zb:-zt,zl:-zr], vmin=0, vmax=maxval, cmap="Reds", transform=rp)
+    else:
+        cont = ax.pcolormesh(rlons[zb:-zt,zl:-zr], rlats[zb:-zt,zl:-zr], fmap[zb:-zt,zl:-zr], cmap="Reds", transform=rp)
     
     if filtering:
         figname += "_filtered"
@@ -92,10 +102,7 @@ def plot_fmap(lons, lats, fmap, typ, season=False, year=None, zoom=False, filter
         figname += "_iuhpt" + str(round(iuh_thresh))
     figname += addname + ".png"
     
-    if maxval:
-        plt.colorbar(cont, vmin=0, vmax=maxval, orientation='horizontal', label=lab)
-    else:
-        plt.colorbar(cont, orientation='horizontal', label=lab)
+    plt.colorbar(cont, orientation=cbar_orientation, label=lab)
     
     if iuh_thresh:
         title += ", iuh thresh = " + str(round(iuh_thresh))
@@ -754,9 +761,30 @@ def supercell_tracks_model_obs_comp_2016_2021_fmaps(conv=True, save=False):
 #==================================================================================================================================================
 # seasonal map from stored data
 
-#season = "2017"
+season = "2021"
 # years = ["2011", "2012", "2013", "2014", "2015", "2016", "2017", "2018", "2019", "2020", "2021"]
-# method = "model_masks"
+method = "model_tracks"
+typ = "rain"
+
+with xr.open_dataset("/scratch/snx3000/mblanc/fmaps_data/" + method + "/rain_season" + season + "_conv_CT1.nc") as dset:
+    counts1 = dset['frequency_map']
+    lons = dset['lon'].values
+    lats = dset['lat'].values
+
+with xr.open_dataset("/scratch/snx3000/mblanc/fmaps_data/" + method + "/rain_season" + season + "_conv_CT2.nc") as dset:
+    counts2 = dset['frequency_map']
+
+maxval = np.max((np.max(counts1), np.max(counts2)))
+
+with xr.open_dataset("/project/pr133/velasque/cosmo_simulations/climate_simulations/RUN_2km_cosmo6_climate/4_lm_f/output/lffd20101019000000c.nc") as dset:
+    rlats = dset.variables['rlat']
+    rlons = dset.variables['rlon']
+rlons, rlats = np.meshgrid(rlons, rlats)
+
+plot_fmap(rlons, rlats, counts2, typ, season=True, year=season, zoom=True, conv=True, save=True, addname="CT2", maxval=maxval)
+plot_fmap(rlons, rlats, counts2, typ, season=True, year=season, zoom=False, conv=True, save=True, addname="CT2", maxval=maxval)
+plot_fmap(rlons, rlats, counts1, typ, season=True, year=season, zoom=True, conv=True, save=True, addname="CT1", maxval=maxval)
+plot_fmap(rlons, rlats, counts1, typ, season=True, year=season, zoom=False, conv=True, save=True, addname="CT1", maxval=maxval)
 
 # for season in years:
     

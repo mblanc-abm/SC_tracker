@@ -16,7 +16,7 @@ from matplotlib import gridspec
 #==================================================================================================================================================
 # FUNCTIONS
 #==================================================================================================================================================
-def plot_fmap(lons, lats, fmap, typ, season=False, year=None, zoom=False, filtering=False, conv=True, save=False, iuh_thresh=None, addname=""):
+def plot_fmap(lons, lats, fmap, typ, season=False, year=None, zoom=False, filtering=False, conv=True, save=False, iuh_thresh=None, addname="", maxval=None):
     """
     Plots the desired decadal (default) or seasonal frequency map and saves the figure
     for the decadal maps expressed in anual average, directly provide the annually averaged counts in input
@@ -48,6 +48,8 @@ def plot_fmap(lons, lats, fmap, typ, season=False, year=None, zoom=False, filter
         displayed in the figure title and name
     addname: str
         option to add additional information to figure name
+    maxval: float
+        option to set a maximum frequency value displayed by the colorbar, for comparison purposes
 
     Returns
     -------
@@ -65,60 +67,38 @@ def plot_fmap(lons, lats, fmap, typ, season=False, year=None, zoom=False, filter
     ax.add_feature(coastline, linestyle='-', edgecolor='k', linewidth=0.2)
     
     if season:
-
-        if zoom:
-            zl, zr, zb, zt = 750, 400, 570, 700 #cut for Alpine region
-            cont = plt.pcolormesh(lons[zb:-zt,zl:-zr], lats[zb:-zt,zl:-zr], fmap[zb:-zt,zl:-zr], cmap="Reds", transform=ccrs.PlateCarree())
-            figname = "season" + year + "_" + typ + "_alps"
-        else:
-            zl, zr, zb, zt = 180, 25, 195, 25 #smart cut for entire domain
-            cont = plt.pcolormesh(lons[zb:-zt,zl:-zr], lats[zb:-zt,zl:-zr], fmap[zb:-zt,zl:-zr], cmap="Reds", transform=ccrs.PlateCarree())
-            figname = "season" + year + "_" + typ
-        
-        if filtering:
-            figname += "_filtered"
-        if conv:
-            figname += "_conv"
-        if iuh_thresh:
-            figname += "_iuhpt" + str(round(iuh_thresh))
-        figname += addname + ".png"
-        
-        if conv:
-            plt.colorbar(cont, orientation='horizontal', label=r"number of " + typ + "s per 24.2 $km^2$")
-        else:
-            plt.colorbar(cont, orientation='horizontal', label=r"number of " + typ + "s per 4.84 $km^2$")
-        
+        figname = "season" + year + "_" + typ
         title = "Season " + year + " " + typ + " distribution map"
-        if iuh_thresh:
-            title += ", iuh thresh = " + str(round(iuh_thresh))
-        
     else:
-        
-        if zoom:
-            zl, zr, zb, zt = 750, 400, 570, 700 #cut for Alpine region
-            cont = plt.pcolormesh(lons[zb:-zt,zl:-zr], lats[zb:-zt,zl:-zr], fmap[zb:-zt,zl:-zr], cmap="Reds", transform=ccrs.PlateCarree())
-            figname = "decadal_" + typ + "_alps"
-        else:
-            zl, zr, zb, zt = 180, 25, 195, 25 #smart cut for entire domain
-            cont = plt.pcolormesh(lons[zb:-zt,zl:-zr], lats[zb:-zt,zl:-zr], fmap[zb:-zt,zl:-zr], cmap="Reds", transform=ccrs.PlateCarree())
-            figname = "decadal_" + typ
-        
-        if filtering:
-            figname += "_filtered"
-        if conv:
-            figname += "_conv"
-        if iuh_thresh:
-            figname += "_iuhpt" + str(round(iuh_thresh))
-        figname += addname + ".png"
-        
-        if conv:
-            plt.colorbar(cont, orientation='horizontal', label=r"number of " + typ + "s per year per 24.2 $km^2$")
-        else:
-            plt.colorbar(cont, orientation='horizontal', label=r"number of " + typ + "s per year per 4.84 $km^2$")
-        
+        figname = "decadal_" + typ
         title = "Decadal " + typ + " distribution map"
-        if iuh_thresh:
-            title += ", iuh thresh = " + str(round(iuh_thresh))
+    
+    if zoom:
+        zl, zr, zb, zt = 750, 400, 570, 700 #cut for Alpine region
+        figname += "_alps"
+    else:
+        zl, zr, zb, zt = 180, 25, 195, 25 #smart cut for entire domain
+    
+    cont = plt.pcolormesh(lons[zb:-zt,zl:-zr], lats[zb:-zt,zl:-zr], fmap[zb:-zt,zl:-zr], cmap="Reds", transform=ccrs.PlateCarree())
+    
+    if filtering:
+        figname += "_filtered"
+    if conv:
+        figname += "_conv"
+        lab = r"number of " + typ + "s per 24.2 $km^2$"
+    else:
+        lab = r"number of " + typ + "s per 4.84 $km^2$"
+    if iuh_thresh:
+        figname += "_iuhpt" + str(round(iuh_thresh))
+    figname += addname + ".png"
+    
+    if maxval:
+        plt.colorbar(cont, vmin=0, vmax=maxval, orientation='horizontal', label=lab)
+    else:
+        plt.colorbar(cont, orientation='horizontal', label=lab)
+    
+    if iuh_thresh:
+        title += ", iuh thresh = " + str(round(iuh_thresh))
         
     plt.title(title)
     
@@ -835,19 +815,19 @@ def supercell_tracks_model_obs_comp_2016_2021_fmaps(conv=True, save=False):
 #==================================================================================================================================================
 # seasonal rain frequency map
 
-season = "2021"
-path2 = "/scratch/snx3000/mblanc/CT2/current_climate/outfiles/"
-path1 = "/scratch/snx3000/mblanc/CT1_output/"
-typ = "rain"
-filename2 = "/scratch/snx3000/mblanc/fmaps_data/model_tracks/rain_season" + season + "_conv_CT2.nc"
-filename1 = "/scratch/snx3000/mblanc/fmaps_data/model_tracks/rain_season" + season + "_conv_CT1.nc"
+# season = "2021"
+# path2 = "/scratch/snx3000/mblanc/CT2/current_climate/outfiles/"
+# path1 = "/scratch/snx3000/mblanc/CT1_output/"
+# typ = "rain"
+# filename2 = "/scratch/snx3000/mblanc/fmaps_data/model_tracks/rain_season" + season + "_conv_CT2.nc"
+# filename1 = "/scratch/snx3000/mblanc/fmaps_data/model_tracks/rain_season" + season + "_conv_CT1.nc"
 
 
-lons, lats, counts2 = seasonal_rain_tracks_model_fmap(season, path2)
-_, _, counts1 = seasonal_rain_tracks_model_fmap(season, path1)
-plot_fmap(lons, lats, counts2, typ, season=True, year=season, zoom=True, filtering=False, conv=True, save=True, iuh_thresh=None, addname="CT2")
-plot_fmap(lons, lats, counts2, typ, season=True, year=season, zoom=False, filtering=False, conv=True, save=True, iuh_thresh=None, addname="CT2")
-plot_fmap(lons, lats, counts1, typ, season=True, year=season, zoom=True, filtering=False, conv=True, save=True, iuh_thresh=None, addname="CT1")
-plot_fmap(lons, lats, counts1, typ, season=True, year=season, zoom=False, filtering=False, conv=True, save=True, iuh_thresh=None, addname="CT1")
-write_to_netcdf(lons, lats, counts2, filename2)
-write_to_netcdf(lons, lats, counts1, filename1)
+# lons, lats, counts2 = seasonal_rain_tracks_model_fmap(season, path2)
+# _, _, counts1 = seasonal_rain_tracks_model_fmap(season, path1)
+# plot_fmap(lons, lats, counts2, typ, season=True, year=season, zoom=True, filtering=False, conv=True, save=True, iuh_thresh=None, addname="CT2")
+# plot_fmap(lons, lats, counts2, typ, season=True, year=season, zoom=False, filtering=False, conv=True, save=True, iuh_thresh=None, addname="CT2")
+# plot_fmap(lons, lats, counts1, typ, season=True, year=season, zoom=True, filtering=False, conv=True, save=True, iuh_thresh=None, addname="CT1")
+# plot_fmap(lons, lats, counts1, typ, season=True, year=season, zoom=False, filtering=False, conv=True, save=True, iuh_thresh=None, addname="CT1")
+# write_to_netcdf(lons, lats, counts2, filename2)
+# write_to_netcdf(lons, lats, counts1, filename1)

@@ -100,7 +100,7 @@ def track_Scells(day, timesteps, fnames_p, fnames_s, fname_h, rain_masks_name, r
         w_3lev = np.stack([w_500, w_600, w_700])
         
         # discriminate between positive and negative signed vorticies; label mesocyclone canditates on a 2D mask
-        labeled_pos, labeled_neg = label_above_thresholds(zeta_3lev, w_3lev, zeta_th, w_th, min_area)
+        labeled_pos, labeled_neg = label_above_thresholds(zeta_3lev, w_3lev, zeta_th, w_th, min_area, aura)
         overlaps, no_overlaps = find_overlaps(field, labeled, rain_masks_hourly[i], aura)
         
         for j, SC_id in enumerate(overlaps['cell_id']): # loop over mesocyclones which will be assigned to a rain cell
@@ -206,11 +206,11 @@ def track_Scells(day, timesteps, fnames_p, fnames_s, fname_h, rain_masks_name, r
 
 
 
-def label_above_thresholds(zeta_3lev, w_3lev, zeta_th, w_th, min_area):
+def label_above_thresholds(zeta_3lev, w_3lev, zeta_th, w_th, min_area, aura):
     """
     Labels above-thresholds and sufficiently large areas.
     Finds cohesive coincident vorticity and updraught velocity regions above the respective thresholds on the three levels
-    and applies vertical consistency criterion.
+    and applies the vertical consistency criterion.
     
     in
     zeta_3lev : 2D vorticity field on the 3 pressure levels, 3D array
@@ -218,28 +218,70 @@ def label_above_thresholds(zeta_3lev, w_3lev, zeta_th, w_th, min_area):
     zeta_th : vorticity threshold value considered as within cell, float
     w_th : updraught velocity threshold value considered as within cell, float
     min_area: minimum horizontal area threshold for each pressure level in grid point, int
+    aura : number of gridpoints to dilate labels, dilation intervenes after min_area criterion is invoked, int
 
     out
     labeled_pos : connected components forming positive vorticies labeled with unique labels, starting from 1, 2D array
     labeled_neg : connected components forming negative vorticies labeled with unique labels, starting from 1, 2D array
     """
-
-    # uses watershed method, fills adjacent cells so they touch at watershed line
-    above_threshold = abs(field) >= sub_threshold
-    labeled, _ = ndimage.label(above_threshold, structure=np.ones((3,3))) # 8-connectivity
-    #labeled = watershed(field, markers, mask=above_threshold)
     
-    #get rid of too small areas as well as areas which don't peak at threshold
-    labels = np.unique(labeled).tolist()
-    labels = [i for i in labels if i != 0]  # remove zero, corresponding to the background
+    # mask above-threshold regions on each level
+    zeta_pos_above_threshold = zeta_3lev >= zeta_th
+    zeta_neg_below_threshold = zeta_3lev <= -zeta_th
+    w_above_threshold = w_3lev >= w_th
+    above_threshold_pos = np.logical_and(zeta_pos_above_threshold, w_above_threshold)
+    below_threshold_neg = np.logical_and(zeta_neg_below_threshold, w_above_threshold)
     
-    for label in labels:
-        count = np.count_nonzero(labeled == label)
-        max_value = np.max(abs(field[labeled == label]))
-        if count < min_area or max_value < threshold:
-            labeled[labeled == label] = 0
+    # label all cohesive above-threshold regions, filter out patterns not fulfilling min area criterion and dilate labels, on each level
+    # reliable method unless patterns of the same sign are less than 3 pixels away from each other
+    labeled_pos = []
+    labeled_neg = []
+    for i in range(3):
+        
+        lbd_pos = ndimage.label(above_threshold_pos[i], structure=np.ones((3,3))) # 8-connectivity
+        labels_pos = np.unique(lbd_pos).tolist()
+        labels_pos = [l for l in labels_pos if l != 0]  # remove zero, corresponding to the background
+        for label in labels_pos:
+            count = np.count_nonzero(lbd_pos == label)
+            if count < min_area:
+                lbd_pos[lbd_pos == label] = 0
+        lbd_pos = expand_labels(lbd_pos, distance=aura) # dilates label to counteract vortex tilting with height
+        labeled_pos.append(lbd_pos)
+        
+        # same for negative vorticies
+        lbd_neg = ndimage.label(below_threshold_neg[i], structure=np.ones((3,3))) # 8-connectivity
+        labels_neg = np.unique(lbd_neg).tolist()
+        labels_neg = [l for l in labels_neg if l != 0]  # remove zero, corresponding to the background
+        for label in labels_neg:
+            count = np.count_nonzero(lbd_neg == label)
+            if count < min_area:
+                lbd_neg[lbd_neg == label] = 0
+        lbd_neg = expand_labels(lbd_neg, distance=aura) # dilates label to counteract vortex tilting with height
+        labeled_neg.append(lbd_neg)
     
-    return labeled
+    labeled_pos = np.stack(labeled_pos)
+    labeled_neg = np.stack(labeled_neg)
+    
+    # check vertical consistency
+    labeled_pos_bin = np.where(labeled_pos > 0, 1, 0) # binary labeling
+    labeled_neg_bin = np.where(labeled_neg > 0, 1, 0) # binary labeling
+    vert_cst_col_pos = np.logical_and(labeled_pos_bin[1], np.logical_or(labeled_pos_bin[0], labeled_pos_bin[2])) # require at least 2 neighbours among the 3 levels
+    vert_cst_col_neg = np.logical_and(labeled_neg_bin[1], np.logical_or(labeled_neg_bin[0], labeled_neg_bin[2])) # require at least 2 neighbours among the 3 levels
+    
+    # project vertically consistent patterns on the 2D horizontal plane (trivially take the mid-level patterns)
+    # note that dilation is performed only once, but can be done a second time at this step to enlarge the vortex foot print
+    mid_labels_pos = np.unique(labeled_pos[1][vert_cst_col_pos]).tolist() # labels of mid-level patterns fulfilling all the criteria; should not contain any background pixel
+    mid_labels_neg = np.unique(labeled_neg[1][vert_cst_col_neg]).tolist() # labels of mid-level patterns fulfilling all the criteria; should not contain any background pixel
+    labeled_pos_2D = np.where(np.isin(labeled_pos[1], mid_labels_pos), labeled_pos[1], 0)
+    labeled_neg_2D = np.where(np.isin(labeled_neg[1], mid_labels_neg), labeled_neg[1], 0)
+    
+    # assign new labels : fill the gaps and sort in chronological order
+    labeled_pos_2D_bin = np.where(labeled_pos_2D > 0, 1, 0) # binary labeling
+    labeled_neg_2D_bin = np.where(labeled_neg_2D > 0, 1, 0) # binary labeling
+    labeled_pos_2D = ndimage.label(labeled_pos_2D_bin, structure=np.ones((3,3)))
+    labeled_neg_2D = ndimage.label(labeled_neg_2D_bin, structure=np.ones((3,3)))
+    
+    return labeled_pos_2D, labeled_neg_2D
 
 
 

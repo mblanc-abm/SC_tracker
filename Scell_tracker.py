@@ -80,28 +80,27 @@ def track_Scells(day, timesteps, fnames_p, fnames_s, fname_h, rain_masks_name, r
     active_cells_ids = [] #and their corresponding ids
     na_vorticies = [] #objects of mesocyclones which did not overlap with any rain cell
     
-    # hail file opening; TO BE RELOCATED
-    with xr.open_dataset(fname_h, engine="netcdf4") as ds:
-        hail = ds["DHAIL_MX"].values
-    
     for i, nowdate in enumerate(timesteps): # loop over integer hours
         
         # compute vorticity fields on the 3 considered pressure levels
+        zeta_400 = zeta_plev(fnames_p[i], fnames_s[i], 2)
         zeta_500 = zeta_plev(fnames_p[i], fnames_s[i], 3)
         zeta_600 = zeta_plev(fnames_p[i], fnames_s[i], 4)
         zeta_700 = zeta_plev(fnames_p[i], fnames_s[i], 5)
-        zeta_3lev = np.stack([zeta_500, zeta_600, zeta_700])
+        zeta_4lev = np.stack([zeta_400, zeta_500, zeta_600, zeta_700])
         
         # same for updraught velocity
         with xr.open_dataset(fnames_p[i]) as dset:
+            w_400 = dset['W'][0][2]
             w_500 = dset['W'][0][3]
             w_600 = dset['W'][0][4]
             w_700 = dset['W'][0][5]
-        w_3lev = np.stack([w_500, w_600, w_700])
+        w_4lev = np.stack([w_400, w_500, w_600, w_700])
         
         # discriminate between positive and negative signed vorticies; label mesocyclone canditates on a 2D mask
-        labeled_pos, labeled_neg = label_above_thresholds(zeta_3lev, w_3lev, zeta_th, w_th, min_area, aura)
-        overlaps, no_overlaps = find_overlaps(field, labeled, rain_masks_hourly[i], aura)
+        labeled_pos = label_above_thresholds(zeta_4lev, w_4lev, zeta_th, w_th, min_area, aura, "positive")
+        labeled_neg = label_above_thresholds(zeta_4lev, w_4lev, zeta_th, w_th, min_area, aura, "negative")
+        overlaps, no_overlaps = find_vortex_rain_overlaps(zeta_600, labeled_pos, labeled_neg, rain_masks_hourly[i])
         
         for j, SC_id in enumerate(overlaps['cell_id']): # loop over mesocyclones which will be assigned to a rain cell
             
@@ -153,7 +152,11 @@ def track_Scells(day, timesteps, fnames_p, fnames_s, fname_h, rain_masks_name, r
             na_vorticies.append(NA_Vortex(nowdate, sgn, no_overlaps['area'][j], float(no_overlaps['max_val'][j]),
                                           float(no_overlaps['mean_val'][j]), coords, round(cent_lon,2), round(cent_lat,2)))
      
-        
+    
+    # hail file opening; TO BE RELOCATED
+    with xr.open_dataset(fname_h, engine="netcdf4") as ds:
+        hail = ds["DHAIL_MX"].values    
+    
     # include the chosen rain cells attributes to the supercells
     for i, ID in enumerate(active_cells_ids):
         # extract rain cell centroid lon/lat coordinates, datelist and max rain rate values from rain tracks
@@ -206,94 +209,81 @@ def track_Scells(day, timesteps, fnames_p, fnames_s, fname_h, rain_masks_name, r
 
 
 
-def label_above_thresholds(zeta_3lev, w_3lev, zeta_th, w_th, min_area, aura):
+def label_above_thresholds(zeta_4lev, w_4lev, zeta_th, w_th, min_area, aura, sgn):
     """
     Labels above-thresholds and sufficiently large areas.
     Finds cohesive coincident vorticity and updraught velocity regions above the respective thresholds on the three levels
     and applies the vertical consistency criterion.
     
     in
-    zeta_3lev : 2D vorticity field on the 3 pressure levels, 3D array
+    zeta_4lev : 2D vorticity field on the 3 pressure levels, 3D array
     w_3lev : 2D updraught velocity field on the 3 pressure levels, 3D array
     zeta_th : vorticity threshold value considered as within cell, float
     w_th : updraught velocity threshold value considered as within cell, float
     min_area: minimum horizontal area threshold for each pressure level in grid point, int
     aura : number of gridpoints to dilate labels, dilation intervenes after min_area criterion is invoked, int
+    sgn : signature of the vorticies, ie "positive" or "negative", str
 
     out
-    labeled_pos : connected components forming positive vorticies labeled with unique labels, starting from 1, 2D array
-    labeled_neg : connected components forming negative vorticies labeled with unique labels, starting from 1, 2D array
+    footprint : 2D vorticies footprints labeled with unique labels, starting from 1, 2D array
     """
     
-    # mask above-threshold regions on each level
-    zeta_pos_above_threshold = zeta_3lev >= zeta_th
-    zeta_neg_below_threshold = zeta_3lev <= -zeta_th
-    w_above_threshold = w_3lev >= w_th
-    above_threshold_pos = np.logical_and(zeta_pos_above_threshold, w_above_threshold)
-    below_threshold_neg = np.logical_and(zeta_neg_below_threshold, w_above_threshold)
+    # check which vorticity signature is wanted and mask above-zeta-threshold regions on each level
+    if sgn == "positive":
+        zeta_above_threshold = zeta_4lev >= zeta_th
+    elif sgn == "negative":
+        zeta_above_threshold = zeta_4lev <= -zeta_th
+    else:
+        raise NameError("Vorticity signature wrongly specified: either positive or negative")
     
-    # label all cohesive above-threshold regions, filter out patterns not fulfilling min area criterion and dilate labels, on each level
+    # mask above-w-threshold regions and apply duo-threshold criterion on each level
+    w_above_threshold = w_4lev >= w_th
+    above_thresholds = np.logical_and(zeta_above_threshold, w_above_threshold)
+    
+    # label all cohesive above-thresholds regions, filter out patterns not fulfilling min area criterion and dilate labels, on each level
     # reliable method unless patterns of the same sign are less than 3 pixels away from each other
-    labeled_pos = []
-    labeled_neg = []
-    for i in range(3):
-        
-        lbd_pos = ndimage.label(above_threshold_pos[i], structure=np.ones((3,3))) # 8-connectivity
-        labels_pos = np.unique(lbd_pos).tolist()
-        labels_pos = [l for l in labels_pos if l != 0]  # remove zero, corresponding to the background
-        for label in labels_pos:
-            count = np.count_nonzero(lbd_pos == label)
+    labeled = []
+    for i in range(4):
+        lbd, _ = ndimage.label(above_thresholds[i], structure=np.ones((3,3))) # 8-connectivity
+        labels = np.unique(lbd).tolist()
+        labels = [l for l in labels if l != 0]  # remove zero, corresponding to the background
+        for label in labels:
+            count = np.count_nonzero(lbd == label)
             if count < min_area:
-                lbd_pos[lbd_pos == label] = 0
-        lbd_pos = expand_labels(lbd_pos, distance=aura) # dilates label to counteract vortex tilting with height
-        labeled_pos.append(lbd_pos)
-        
-        # same for negative vorticies
-        lbd_neg = ndimage.label(below_threshold_neg[i], structure=np.ones((3,3))) # 8-connectivity
-        labels_neg = np.unique(lbd_neg).tolist()
-        labels_neg = [l for l in labels_neg if l != 0]  # remove zero, corresponding to the background
-        for label in labels_neg:
-            count = np.count_nonzero(lbd_neg == label)
-            if count < min_area:
-                lbd_neg[lbd_neg == label] = 0
-        lbd_neg = expand_labels(lbd_neg, distance=aura) # dilates label to counteract vortex tilting with height
-        labeled_neg.append(lbd_neg)
-    
-    labeled_pos = np.stack(labeled_pos)
-    labeled_neg = np.stack(labeled_neg)
+                lbd[lbd == label] = 0
+        lbd = expand_labels(lbd, distance=aura) # dilates label to counteract vortex tilting with height
+        labeled.append(lbd)
+    labeled = np.stack(labeled)
     
     # check vertical consistency
-    labeled_pos_bin = np.where(labeled_pos > 0, 1, 0) # binary labeling
-    labeled_neg_bin = np.where(labeled_neg > 0, 1, 0) # binary labeling
-    vert_cst_col_pos = np.logical_and(labeled_pos_bin[1], np.logical_or(labeled_pos_bin[0], labeled_pos_bin[2])) # require at least 2 neighbours among the 3 levels
-    vert_cst_col_neg = np.logical_and(labeled_neg_bin[1], np.logical_or(labeled_neg_bin[0], labeled_neg_bin[2])) # require at least 2 neighbours among the 3 levels
+    labeled_bin = np.where(labeled > 0, 1, 0) # binary labeling
+    vc_3lev = np.logical_and(labeled_bin[2], np.logical_or(labeled_bin[1], labeled_bin[3])) # require at least 2 neighbours among the 3 lower levels
+    vc_4lev = np.logical_or(vc_3lev, np.logical_and(labeled_bin[0], labeled_bin[1])) # or among the 2 upper
     
-    # project vertically consistent patterns on the 2D horizontal plane (trivially take the mid-level patterns)
-    # note that dilation is performed only once, but can be done a second time at this step to enlarge the vortex foot print
-    mid_labels_pos = np.unique(labeled_pos[1][vert_cst_col_pos]).tolist() # labels of mid-level patterns fulfilling all the criteria; should not contain any background pixel
-    mid_labels_neg = np.unique(labeled_neg[1][vert_cst_col_neg]).tolist() # labels of mid-level patterns fulfilling all the criteria; should not contain any background pixel
-    labeled_pos_2D = np.where(np.isin(labeled_pos[1], mid_labels_pos), labeled_pos[1], 0)
-    labeled_neg_2D = np.where(np.isin(labeled_neg[1], mid_labels_neg), labeled_neg[1], 0)
+    # keep only the vertically consistent patterns on each level
+    for i in range(4):
+        # labels of current level patterns fulfilling all the criteria, if any; should not contain any background pixel; can be empty
+        labels = np.unique(labeled[i][vc_4lev]).tolist()
+        labels = [l for l in labels if l != 0]  # remove zero, corresponding to the background
+        labeled[i] = np.where(np.isin(labeled[i], labels), 1, 0) # filter out vertically inconsistent patterns and make the labeling binary
     
-    # assign new labels : fill the gaps and sort in chronological order
-    labeled_pos_2D_bin = np.where(labeled_pos_2D > 0, 1, 0) # binary labeling
-    labeled_neg_2D_bin = np.where(labeled_neg_2D > 0, 1, 0) # binary labeling
-    labeled_pos_2D = ndimage.label(labeled_pos_2D_bin, structure=np.ones((3,3)))
-    labeled_neg_2D = ndimage.label(labeled_neg_2D_bin, structure=np.ones((3,3)))
+    # aggregate the binary masks on the horizontal plane to create a 2D footprint and re-label the patterns
+    footprint = np.sum(labeled, axis=0)
+    footprint, _ = ndimage.label(footprint, structure=np.ones((3,3)))
     
-    return labeled_pos_2D, labeled_neg_2D
+    return footprint
 
 
 
-def find_overlaps(field, labeled, rain_mask, aura=0, printout=False):
+def find_vortex_rain_overlaps(zeta_4lev, labeled, rain_mask):
     """
-    finds overlaps between supercells and rain cells for SC -> rain cell association
+    finds overlaps between vorticies and rain cells for mesocyclone -> rain cell association
     outputs SCs to rain cells association with overlap, SC signature, max value, mean value and area
     
     in
-    labeled: labeled supercell areas (label number arbitrary, 0 is background), 2D array
+    zeta_m : vorticity field on the mid-level, 2D array
+    labeled: 2D labeled vorticies footprints (0 is background, starts at 1), 2D array
     rain_mask: labeled rain cells (nan is background, cell ids start at 0), 2D array
-    aura: number of gridpoints to dilate labels (post-dilation, called after min area is invoked !), int
     
     out
     overlaps: a set containing 6 columns; detected mesocyclones are classified according to their signature (RM of LM), max value,
@@ -301,32 +291,26 @@ def find_overlaps(field, labeled, rain_mask, aura=0, printout=False):
     no_overlaps: set containing information about signature, area, max and mean value, and gridpoint coordinates of missed mesocyclones
     """
     
-    labels_SC = np.unique(labeled).tolist() # get a list of the SCs label numbers
-    labels_SC = [i for i in labels_SC if i != 0] # remove zero, which corresponds to the background
+    labels_VX = np.unique(labeled).tolist() # get a list of the vorticies labels
+    labels_VX = [i for i in labels_VX if i != 0] # remove zero, which corresponds to the background
     #cell_ids = np.unique(rain_mask)[:-1] # get a list of the cell ids and remove nans, corresponding to background
     
-    #dilate labels,will be used only for searching overlaps !
-    if aura:
-        labeled_dil = expand_labels(labeled, distance=aura)
-    else:
-        labeled_dil = labeled
-    
-    #determine the overlap between mesocyclones and rain cells, and document not assigned mesocyclones
+    #determine the overlap between vorticies and rain cells, and document not assigned vorticies
     overlaps = {"cell_id": [], "overlap": [], "signature": [], "area": [], "max_val": [], "mean_val": [], "coord": []}
     no_overlaps = {"signature": [], "area": [], "max_val": [], "mean_val": [], "coord": []}
     
-    for SC_label in labels_SC:
-        ovl_matrix = np.logical_and(labeled_dil == SC_label, np.logical_not(np.isnan(rain_mask))) #use the dilated labels for overlap
+    for VX_label in labels_VX:
+        ovl_matrix = np.logical_and(labeled == VX_label, np.logical_not(np.isnan(rain_mask)))
         ovl = np.count_nonzero(ovl_matrix)
         rain_mask = np.array(rain_mask)
         ovl_matrix = np.array(ovl_matrix)
-        corr_cell_id = np.unique(rain_mask[ovl_matrix])
-        corr_cell_id = corr_cell_id[~np.isnan(corr_cell_id)].astype(int) #remove nans and convert from float to int type
+        corr_cell_id = np.unique(rain_mask[ovl_matrix]).astype(int)
+        #corr_cell_id = corr_cell_id[~np.isnan(corr_cell_id)].astype(int) #remove nans and convert from float to int type
         
-        coordinates = np.argwhere(labeled == SC_label) #find (gridpoints) coordinates of mesocyclone
-        mean_val = round(np.mean(field[coordinates[:,0], coordinates[:,1]]), 1)
+        coordinates = np.argwhere(labeled == VX_label) #find (gridpoints) coordinates of the vortex
+        mean_val = round(np.mean(zeta_midlev[coordinates[:,0], coordinates[:,1]]), 1)
         sgn = np.sign(mean_val).astype(int)
-        max_val = round(np.max(abs(field[coordinates[:,0], coordinates[:,1]])), 1)
+        max_val = round(np.max(np.abs(zeta_midlev[coordinates[:,0], coordinates[:,1]])), 1)
         area = len(coordinates) # np.count_nonzero(labeled == SC_label)
                 
         # if the current SC overlaps with an unique rain cell, append the corresponding cell id and overlap area
@@ -341,7 +325,7 @@ def find_overlaps(field, labeled, rain_mask, aura=0, printout=False):
         elif ovl > 0 and len(corr_cell_id) > 1:
             sub_ovl = [] #by construction at least one pixel of the SC must overlap with either of the the rain cells
             for cell_id in corr_cell_id:
-                sub_ovl_matrix = np.logical_and(labeled_dil == SC_label, rain_mask == cell_id)
+                sub_ovl_matrix = np.logical_and(labeled == VX_label, rain_mask == cell_id)
                 sub_ovl.append(int(np.count_nonzero(sub_ovl_matrix)))
             overlaps["cell_id"].append(corr_cell_id.tolist())
             overlaps["overlap"].append(sub_ovl) #this time the new cell_id and overlap elements are both vectors
@@ -358,12 +342,6 @@ def find_overlaps(field, labeled, rain_mask, aura=0, printout=False):
             no_overlaps["coord"].append(coordinates)
     
     
-    if printout:
-        print("Mesocyclones overlapping with rain cells:")
-        print(overlaps)
-        print("Missed mesocyclones:")
-        print(no_overlaps)
-        
     return overlaps, no_overlaps
 
 
@@ -376,7 +354,7 @@ class SuperCell:
     def __init__(self, rain_cell_id, nowdate, signature, area, max_val, mean_val, coord, cent_lon, cent_lat, overlap, max_hail,
                  sub_ids, sub_overlaps):
         """
-        inizialize cell object
+        initialise cell object
 
         in
         rain_cell_id: rain cell id that has just been detected as supercell, unique, int

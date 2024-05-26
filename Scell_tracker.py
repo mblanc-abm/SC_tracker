@@ -100,7 +100,8 @@ def track_Scells(day, timesteps, fnames_p, fnames_s, fname_h, rain_masks_name, r
         # discriminate between positive and negative signed vorticies; label mesocyclone canditates on a 2D mask
         labeled_pos = label_above_thresholds(zeta_4lev, w_4lev, zeta_th, w_th, min_area, aura, "positive")
         labeled_neg = label_above_thresholds(zeta_4lev, w_4lev, zeta_th, w_th, min_area, aura, "negative")
-        overlaps, no_overlaps = find_vortex_rain_overlaps(zeta_600, labeled_pos, labeled_neg, rain_masks_hourly[i])
+        overlaps_pos, no_overlaps_pos = find_vortex_rain_overlaps(zeta_4lev, w_4lev, labeled_pos, rain_masks_hourly[i], zeta_th, w_th)
+        overlaps_neg, no_overlaps_neg = find_vortex_rain_overlaps(zeta_4lev, w_4lev, labeled_neg, rain_masks_hourly[i], zeta_th, w_th)
         
         for j, SC_id in enumerate(overlaps['cell_id']): # loop over mesocyclones which will be assigned to a rain cell
             
@@ -216,8 +217,8 @@ def label_above_thresholds(zeta_4lev, w_4lev, zeta_th, w_th, min_area, aura, sgn
     and applies the vertical consistency criterion.
     
     in
-    zeta_4lev : 2D vorticity field on the 3 pressure levels, 3D array
-    w_3lev : 2D updraught velocity field on the 3 pressure levels, 3D array
+    zeta_4lev : 2D vorticity field on the 4 pressure levels, 3D array
+    w_4lev : 2D updraught velocity field on the 4 pressure levels, 3D array
     zeta_th : vorticity threshold value considered as within cell, float
     w_th : updraught velocity threshold value considered as within cell, float
     min_area: minimum horizontal area threshold for each pressure level in grid point, int
@@ -245,8 +246,8 @@ def label_above_thresholds(zeta_4lev, w_4lev, zeta_th, w_th, min_area, aura, sgn
     labeled = []
     for i in range(4):
         lbd, _ = ndimage.label(above_thresholds[i], structure=np.ones((3,3))) # 8-connectivity
-        labels = np.unique(lbd).tolist()
-        labels = [l for l in labels if l != 0]  # remove zero, corresponding to the background
+        labels = np.unique(lbd)
+        labels = labels[labels != 0]  # remove zero, corresponding to the background
         for label in labels:
             count = np.count_nonzero(lbd == label)
             if count < min_area:
@@ -260,12 +261,12 @@ def label_above_thresholds(zeta_4lev, w_4lev, zeta_th, w_th, min_area, aura, sgn
     vc_3lev = np.logical_and(labeled_bin[2], np.logical_or(labeled_bin[1], labeled_bin[3])) # require at least 2 neighbours among the 3 lower levels
     vc_4lev = np.logical_or(vc_3lev, np.logical_and(labeled_bin[0], labeled_bin[1])) # or among the 2 upper
     
-    # keep only the vertically consistent patterns on each level
+    # keep only the vertically consistent patterns on each level and find the zeta and w max/mean values
     for i in range(4):
         # labels of current level patterns fulfilling all the criteria, if any; should not contain any background pixel; can be empty
-        labels = np.unique(labeled[i][vc_4lev]).tolist()
-        labels = [l for l in labels if l != 0]  # remove zero, corresponding to the background
-        labeled[i] = np.where(np.isin(labeled[i], labels), 1, 0) # filter out vertically inconsistent patterns and make the labeling binary
+        labels_tokeep = np.unique(labeled[i][vc_4lev])
+        labels_tokeep = labels_tokeep[labels_tokeep != 0]  # remove zero, corresponding to the background
+        labeled[i] = np.where(np.isin(labeled[i], labels_tokeep), 1, 0) # filter out vertically inconsistent patterns and make binary labeling        
     
     # aggregate the binary masks on the horizontal plane to create a 2D footprint and re-label the patterns
     footprint = np.sum(labeled, axis=0)
@@ -275,51 +276,69 @@ def label_above_thresholds(zeta_4lev, w_4lev, zeta_th, w_th, min_area, aura, sgn
 
 
 
-def find_vortex_rain_overlaps(zeta_4lev, labeled, rain_mask):
+def find_vortex_rain_overlaps(zeta_4lev, w_4lev, labeled, rain_mask, zeta_th, w_th):
     """
     finds overlaps between vorticies and rain cells for mesocyclone -> rain cell association
-    outputs SCs to rain cells association with overlap, SC signature, max value, mean value and area
+    outputs SCs to rain cells association with overlap, SC signature, max values, mean values and area
     
     in
-    zeta_m : vorticity field on the mid-level, 2D array
+    zeta_4lev : raw vorticity fields on the 4 levels, 3D array
+    w_4lev : raw updraught velocity fields on the 4 levels, 3D array
     labeled: 2D labeled vorticies footprints (0 is background, starts at 1), 2D array
     rain_mask: labeled rain cells (nan is background, cell ids start at 0), 2D array
+    zeta_th : vorticity threshold value, float
+    w_th : updraught velocity threshold value, float
     
     out
-    overlaps: a set containing 6 columns; detected mesocyclones are classified according to their signature (RM of LM), max value,
-              mean value, area, gridpoint coordinates, and assigned to a(several) rain cell(s) with their corresponding overlap (in gp), set
-    no_overlaps: set containing information about signature, area, max and mean value, and gridpoint coordinates of missed mesocyclones
+    overlaps: a set containing 6 columns; detected mesocyclones are classified according to their signature (RM of LM), max zeta and w values,
+              mean zeta and w values, area, gridpoint coordinates, and assigned to a(several) rain cell(s) with their corresponding overlap (in gp), set
+    no_overlaps: set containing similar information, exept the overlap and corresponding rain cell ID, about not assigned vorticies
     """
     
-    labels_VX = np.unique(labeled).tolist() # get a list of the vorticies labels
-    labels_VX = [i for i in labels_VX if i != 0] # remove zero, which corresponds to the background
+    labels_VX = np.unique(labeled) # get a list of the vorticies labels
+    labels_VX = labels_VX[labels_VX != 0] # remove zero, which corresponds to the background
     #cell_ids = np.unique(rain_mask)[:-1] # get a list of the cell ids and remove nans, corresponding to background
     
     #determine the overlap between vorticies and rain cells, and document not assigned vorticies
-    overlaps = {"cell_id": [], "overlap": [], "signature": [], "area": [], "max_val": [], "mean_val": [], "coord": []}
-    no_overlaps = {"signature": [], "area": [], "max_val": [], "mean_val": [], "coord": []}
+    overlaps = {"cell_id": [], "overlap": [], "signature": [], "area": [], "max_zeta": [], "mean_zeta": [], "max_w": [], "mean_w": [], "coord": []}
+    no_overlaps = {"signature": [], "area": [], "max_zeta": [], "mean_zeta": [], "max_w": [], "mean_w": [], "coord": []}
     
     for VX_label in labels_VX:
+        coordinates = np.argwhere(labeled == VX_label) #find (gridpoints) coordinates of the vortex
         ovl_matrix = np.logical_and(labeled == VX_label, np.logical_not(np.isnan(rain_mask)))
         ovl = np.count_nonzero(ovl_matrix)
         rain_mask = np.array(rain_mask)
         ovl_matrix = np.array(ovl_matrix)
         corr_cell_id = np.unique(rain_mask[ovl_matrix]).astype(int)
         #corr_cell_id = corr_cell_id[~np.isnan(corr_cell_id)].astype(int) #remove nans and convert from float to int type
+                
+        # for mean and max, consider all values above the surface footprint that fulfill the duo-threshold criterion
+        zeta_values = []
+        w_values = []
+        for lev in range(4):
+            above_ths_coords = np.argwhere(np.logical_and(np.abs(zeta_4lev[lev]) >= zeta_th, w_4lev[lev] >= w_th))
+            val_coords = [c for c in above_ths_coords.tolist() if c in coordinates]
+            val_coords = np.array(val_coords)
+            if len(val_coords) > 0:
+                zeta_values.extend(zeta_4lev[lev, val_coords[:,0], val_coords[:,1]])
+                w_values.extend(w_4lev[lev, val_coords[:,0], val_coords[:,1]])
         
-        coordinates = np.argwhere(labeled == VX_label) #find (gridpoints) coordinates of the vortex
-        mean_val = round(np.mean(zeta_midlev[coordinates[:,0], coordinates[:,1]]), 1)
-        sgn = np.sign(mean_val).astype(int)
-        max_val = round(np.max(np.abs(zeta_midlev[coordinates[:,0], coordinates[:,1]])), 1)
-        area = len(coordinates) # np.count_nonzero(labeled == SC_label)
+        mean_zeta = round(np.mean(zeta_values), 1)
+        sgn = np.sign(mean_zeta).astype(int)
+        max_zeta = round(np.max(np.abs(zeta_values)), 1)
+        mean_w = round(np.mean(w_values), 1)
+        max_w = round(np.max(w_values), 1)
+        area = len(coordinates) # np.count_nonzero(labeled == VX_label)
                 
         # if the current SC overlaps with an unique rain cell, append the corresponding cell id and overlap area
         if ovl > 0 and len(corr_cell_id) == 1:
             overlaps["cell_id"].append(int(corr_cell_id))
             overlaps["overlap"].append(int(ovl))
             overlaps["signature"].append(int(sgn))
-            overlaps["mean_val"].append(mean_val)
-            overlaps["max_val"].append(sgn*max_val)
+            overlaps["mean_zeta"].append(mean_zeta)
+            overlaps["max_zeta"].append(sgn*max_zeta)
+            overlaps["mean_w"].append(mean_w)
+            overlaps["max_w"].append(max_w)
             overlaps["area"].append(area)
             overlaps["coord"].append(coordinates)
         elif ovl > 0 and len(corr_cell_id) > 1:
@@ -330,17 +349,20 @@ def find_vortex_rain_overlaps(zeta_4lev, labeled, rain_mask):
             overlaps["cell_id"].append(corr_cell_id.tolist())
             overlaps["overlap"].append(sub_ovl) #this time the new cell_id and overlap elements are both vectors
             overlaps["signature"].append(int(sgn))
-            overlaps["mean_val"].append(mean_val)
-            overlaps["max_val"].append(sgn*max_val)
+            overlaps["mean_zeta"].append(mean_zeta)
+            overlaps["max_zeta"].append(sgn*max_zeta)
+            overlaps["mean_w"].append(mean_w)
+            overlaps["max_w"].append(max_w)
             overlaps["area"].append(area)
             overlaps["coord"].append(coordinates)
         else: # no overlaps with any rain cell
             no_overlaps["signature"].append(int(sgn))
-            no_overlaps["mean_val"].append(mean_val)
-            no_overlaps["max_val"].append(sgn*max_val)
+            no_overlaps["mean_zeta"].append(mean_zeta)
+            no_overlaps["max_zeta"].append(sgn*max_zeta)
+            no_overlaps["mean_w"].append(mean_w)
+            no_overlaps["max_w"].append(max_w)
             no_overlaps["area"].append(area)
-            no_overlaps["coord"].append(coordinates)
-    
+            no_overlaps["coord"].append(coordinates)   
     
     return overlaps, no_overlaps
 

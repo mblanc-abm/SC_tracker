@@ -32,9 +32,30 @@ def plot_vortex_masks(lons, lats, labeled, cmap, levels, ticks, typ, dt):
     plt.colorbar(cont, ticks=ticks, orientation='horizontal', label = typ + " vorticies")
     plt.title(dt.strftime("%d/%m/%Y %H:%M:%S"))
 
+
+def plot_vortex_rain_masks(lons, lats, labeled_vx, cmap_vx, levels_vx, ticks_vx, typ_vx, dt, cmap_rm, levels_rm, ticks_rm, rain_mask):
+    
+    resol = '10m'
+    bodr = cfeature.NaturalEarthFeature(category='cultural', name='admin_0_boundary_lines_land', scale=resol, facecolor='none', alpha=0.5)
+    rp = ccrs.RotatedPole(pole_longitude = -170, pole_latitude = 43)
+
+    fig = plt.figure(figsize=(6,9))
+    
+    ax1 = fig.add_subplot(2, 1, 1, projection=rp)
+    ax1.add_feature(bodr, linestyle='-', edgecolor='k', alpha=1, linewidth=0.2)
+    cont_vx = ax1.contourf(lons, lats, labeled_vx, cmap=cmap_vx, levels=levels_vx, transform=ccrs.PlateCarree())
+    plt.colorbar(cont_vx, ticks=ticks_vx, orientation='horizontal', label = typ_vx + " vorticies masks")
+    plt.title(dt.strftime("%d/%m/%Y %H:%M:%S"))
+    
+    ax2 = fig.add_subplot(2, 1, 2, projection=rp)
+    cont_rm = ax2.contourf(lons, lats, rain_mask, levels=levels_rm, cmap=cmap_rm, transform=ccrs.PlateCarree())
+    ax2.add_feature(bodr, linestyle='-', edgecolor='k', alpha=1, linewidth=0.2)
+    cbar = plt.colorbar(cont_rm, ticks=ticks_rm, orientation='horizontal', label="Rain masks")
+    cbar.locator = MultipleLocator(base=5)
+
 #================================================================================================================================
 #inputs
-dtstr = "20210620150000" # to be filled: full date and time of timeshot
+dtstr = "20120630170000" # to be filled: full date and time of timeshot
 dt = pd.to_datetime(dtstr, format="%Y%m%d%H%M%S")
 aura = 1
 zeta_th = 4e-3
@@ -42,7 +63,9 @@ w_th = 6
 min_area = 3
 
 #================================================================================================================================
-## test label_above_thresholds
+## test label_above_thresholds and find_vortex_rain_overlaps ##
+
+# load zeta and w data
 
 fp = "/scratch/snx3000/mblanc/SDT/infiles/CaseStudies/1h_3D_plev/cut_lffd" + dtstr + "p.nc"
 fs = "/scratch/snx3000/mblanc/SDT/infiles/CaseStudies/1h_2D/cut_PSlffd" + dtstr + ".nc"
@@ -51,7 +74,7 @@ zeta_400 = zeta_plev(fp, fs, 2)
 zeta_500 = zeta_plev(fp, fs, 3)
 zeta_600 = zeta_plev(fp, fs, 4)
 zeta_700 = zeta_plev(fp, fs, 5)
-zeta_3lev = np.stack([zeta_400, zeta_500, zeta_600, zeta_700])
+zeta_4lev = np.stack([zeta_400, zeta_500, zeta_600, zeta_700])
 
 with xr.open_dataset(fp) as dset:
     lons = dset["lon"].values
@@ -60,81 +83,66 @@ with xr.open_dataset(fp) as dset:
     w_500 = dset['W'][0][3]
     w_600 = dset['W'][0][4]
     w_700 = dset['W'][0][5]
-w_3lev = np.stack([w_400, w_500, w_600, w_700])
+w_4lev = np.stack([w_400, w_500, w_600, w_700])
 
-labeled_pos = label_above_thresholds(zeta_3lev, w_3lev, zeta_th, w_th, min_area, aura, "positive")
-labeled_neg = label_above_thresholds(zeta_3lev, w_3lev, zeta_th, w_th, min_area, aura, "negative")
+# load rain mask
+maskfile = "/scratch/snx3000/mblanc/CT_CSs/outfiles_CT2PT/cell_masks_" + dt.strftime("%Y%m%d") + ".nc"
+with xr.open_dataset(maskfile) as dset:
+    masks = dset['cell_mask'] # 3D matrix
+    times = pd.to_datetime(dset['time'].values)
+    
+# select hourly masks and times -> decrease temporal resolution to match the IUH one
+time_slice = times == dt
+mask = masks[time_slice][0]
+
+# prepare mask metadata
+vmin = -0.5
+ncells = int(np.max(mask)+1)
+vmax = (ncells - 1) + 0.5
+ticks_mask = np.arange(0, ncells)
+levels_mask = np.linspace(vmin, vmax, ncells+1)
+cmap_mask = plt.cm.get_cmap('tab20')
+colors = [cmap_mask(i % 20) for i in range(20*int(np.ceil(ncells/20)))]
+cmap_mask = ListedColormap(colors)
+
+# search and label vortices, and find overlaps
+labeled_pos = label_above_thresholds(zeta_4lev, w_4lev, zeta_th, w_th, min_area, aura, "positive")
+labeled_neg = label_above_thresholds(zeta_4lev, w_4lev, zeta_th, w_th, min_area, aura, "negative")
+overlaps_pos, _ = find_vortex_rain_overlaps(zeta_4lev, w_4lev, labeled_pos, mask, zeta_th, w_th)
+overlaps_neg, _ = find_vortex_rain_overlaps(zeta_4lev, w_4lev, labeled_neg, mask, zeta_th, w_th)
 labeled_pos = np.where(labeled_pos == 0, np.nan, labeled_pos)
 labeled_neg = np.where(labeled_neg == 0, np.nan, labeled_neg)
 
-## plot positive vorticies
+print(overlaps_pos)
+print(overlaps_neg)
+
+## plot positive and negative vorticies, if any, together with the rain mask
 
 if not np.isnan(np.nanmax(labeled_pos)):
     vmin = 0.5
     ncells = int(np.nanmax(labeled_pos))
     vmax = ncells + 0.5
-    ticks = np.arange(0, ncells+1)
-    levels = np.linspace(vmin, vmax, ncells+1)
-    cmap = plt.cm.get_cmap('tab10')
-    colors = [cmap(i % 10) for i in range(10*int(np.ceil(ncells/10)))]
-    cmap = ListedColormap(colors)
-    plot_vortex_masks(lons, lats, labeled_pos, cmap, levels, ticks, "positive", dt)
+    ticks_vx = np.arange(0, ncells+1)
+    levels_vx = np.linspace(vmin, vmax, ncells+1)
+    cmap_vx = plt.cm.get_cmap('tab10')
+    colors = [cmap_vx(i % 10) for i in range(10*int(np.ceil(ncells/10)))]
+    cmap_vx = ListedColormap(colors)
+    #plot_vortex_masks(lons, lats, labeled_pos, cmap_vx, levels_vx, ticks_vx, "positive", dt)
+    plot_vortex_rain_masks(lons, lats, labeled_pos, cmap_vx, levels_vx, ticks_vx, "positive", dt, cmap_mask, levels_mask, ticks_mask, mask)
 
 if not np.isnan(np.nanmax(labeled_neg)):
     vmin = 0.5
     ncells = int(np.nanmax(labeled_neg))
     vmax = ncells + 0.5
-    ticks = np.arange(0, ncells+1)
-    levels = np.linspace(vmin, vmax, ncells+1)
-    cmap = plt.cm.get_cmap('tab10')
-    colors = [cmap(i % 10) for i in range(10*int(np.ceil(ncells/10)))]
-    cmap = ListedColormap(colors)
-    plot_vortex_masks(lons, lats, labeled_neg, cmap, levels, ticks, "negative", dt)
+    ticks_vx = np.arange(0, ncells+1)
+    levels_vx = np.linspace(vmin, vmax, ncells+1)
+    cmap_vx = plt.cm.get_cmap('tab10')
+    colors = [cmap_vx(i % 10) for i in range(10*int(np.ceil(ncells/10)))]
+    cmap_vx = ListedColormap(colors)
+    #plot_vortex_masks(lons, lats, labeled_neg, cmap_vx, levels_vx, ticks_vx, "negative", dt)
+    plot_vortex_rain_masks(lons, lats, labeled_neg, cmap_vx, levels_vx, ticks_vx, "negative", dt, cmap_mask, levels_mask, ticks_mask, mask)
 
-# ax1 = fig.add_subplot(3, 1, 1, projection=ccrs.PlateCarree())
-# ax1.add_feature(bodr, linestyle='-', edgecolor='k', alpha=1, linewidth=0.2)
-# cont_iuh = ax1.pcolormesh(lons, lats, iuh, cmap="RdBu_r", norm=norm_iuh, transform=ccrs.PlateCarree())
-# plt.colorbar(cont_iuh, ticks=ticks_iuh, extend='both', orientation='horizontal', label=r"IUH ($m^2/s^2$)")
-# plt.title(dt.strftime("%d/%m/%Y %H:%M:%S"))
-
-# ax2 = fig.add_subplot(3, 1, 2, projection=ccrs.PlateCarree())
-# cont = ax2.contourf(lons, lats, labeled_disp, cmap=cmap_lab, levels=levels_lab, transform=ccrs.PlateCarree())
-# ax2.add_feature(bodr, linestyle='-', edgecolor='k', alpha=1, linewidth=0.2)
-# cbar = plt.colorbar(cont, ticks=ticks_lab, orientation='horizontal', label="supercells labels, aura="+str(aura))
-# cbar.locator = MultipleLocator(base=2)
-
-# ax3 = fig.add_subplot(3, 1, 3, projection=ccrs.PlateCarree())
-# cont_mask = ax3.contourf(lons, lats, mask, levels=levels_mask, cmap=cmap_mask, transform=ccrs.PlateCarree())
-# ax3.add_feature(bodr, linestyle='-', edgecolor='k', alpha=1, linewidth=0.2)
-# cbar = plt.colorbar(cont_mask, ticks=ticks_mask, orientation='horizontal', label="Cell mask")
-# cbar.locator = MultipleLocator(base=5)
-
-# fig.savefig(dtstr+".png", dpi=300)
-
-
-#================================================================================================================================
-## test find_overlaps
-# maskfile = "/scratch/snx3000/mblanc/CaseStudies/outfiles_CT1/cell_masks_" + dt.strftime("%Y%m%d") + ".nc"
-# with xr.open_dataset(maskfile) as dset:
-#     masks = dset['cell_mask'] # 3D matrix
-#     times = pd.to_datetime(dset['time'].values)
-
-# # select hourly masks and times -> decrease temporal resolution to match the IUH one
-# time_slice = times == dt
-# mask = masks[time_slice][0]
-
-# vmin = -0.5
-# ncells = int(np.max(mask)+1)
-# vmax = (ncells - 1) + 0.5
-# ticks_mask = np.arange(0, ncells)
-# levels_mask = np.linspace(vmin, vmax, ncells+1)
-# cmap_mask = plt.cm.get_cmap('tab20')
-# colors = [cmap_mask(i % 20) for i in range(20*int(np.ceil(ncells/20)))]
-# cmap_mask = ListedColormap(colors)
-
-# overlaps = find_overlaps(iuh, labeled, mask, aura, printout=True)
-
-# #================================================================================================================================
+#==============================================================================================================================
 # ## test meso masks
 
 # with xr.open_dataset("/scratch/snx3000/mblanc/SDT_output/seasons/2020/meso_masks_20200401.nc") as dset:

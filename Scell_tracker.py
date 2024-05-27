@@ -12,6 +12,7 @@ from scipy import ndimage
 #from skimage.feature import peak_local_max
 from skimage.segmentation import expand_labels
 #from skimage.morphology import disk
+import datetime as dt
 
 import os
 import sys
@@ -20,7 +21,7 @@ from CaseStudies import zeta_plev
 
 #=======================================================================================================================================
 
-def track_Scells(day, timesteps, fnames_p, fnames_s, fname_h, rain_masks_name, rain_tracks_name, zeta_th, w_th, min_area, aura, CS=False):
+def track_Scells(day, timesteps, fnames_p, fnames_s, path_h, rain_masks_name, rain_tracks_name, zeta_th, w_th, min_area, aura, CS=False):
     """
     Main function managing mesocyclone detection and meso-rain association.
 
@@ -32,12 +33,14 @@ def track_Scells(day, timesteps, fnames_p, fnames_s, fname_h, rain_masks_name, r
         list of hourly datetimes, corresponding to the integer hours of the considered day where the vorticity field is available
     fnames_p : list of str
         complete path and names of the 3D pressure levels files containing the wind fields, for vorticity
+        must correspond to timesteps element-wise
     fnames_s : list of str
         complete path and names of the 2D surface pressure files, for vorticity and 10m max wind speed
-    fname_h : str
-        path and name of the concatenated 5min surface files, for max hail diameter
+        must correspond to timesteps element-wise
+    path_h : str
+        path to the concatenated 5min surface file, for max hail diameter
     rain_masks_name : str
-        path to the netcdf rain masks: labeled rain cells (nan is background, cell labels start at 0), 2D arrays, concatenated
+        path to the netcdf rain masks file: labeled rain cells (nan is background, cell labels start at 0), 2D arrays, concatenated
         with a 5 min resolution
     rain_tracks_name : str
         path to the output json file of the cell tracker algorithm 
@@ -50,7 +53,7 @@ def track_Scells(day, timesteps, fnames_p, fnames_s, fname_h, rain_masks_name, r
     aura : int
         number of gridpoints to dilate labels, supercell post-dilation intervenes after min_area criterion is invoked
     CS : bool
-        if running on a case study where domain is cropped into a subdomain, 2D surface files contain only surface pressure and
+        if running on a case study where domain is cropped into a subdomain, hourly 2D surface files contain only surface pressure and
         not 10m max wind speed -> the latter variable will therefore not be considered
     
     Returns
@@ -61,10 +64,10 @@ def track_Scells(day, timesteps, fnames_p, fnames_s, fname_h, rain_masks_name, r
     lats: latitude at each gridpoint, 2D array
     """
     
-    # rain masks opening
+    # rain masks, 5min timesteps and static fields opening
     with xr.open_dataset(rain_masks_name) as dset:
         rain_masks = dset['cell_mask'] # 3D matrix
-        times_5min = pd.to_datetime(dset['time'].values)
+        times_5min = pd.to_datetime(dset['time'].dt.round("5min").values) # get rid of timestamp errors
         lons = dset["lon"].values
         lats = dset["lat"].values
     
@@ -78,18 +81,18 @@ def track_Scells(day, timesteps, fnames_p, fnames_s, fname_h, rain_masks_name, r
    
     active_cells = [] #in terms of supercellular activity
     active_cells_ids = [] #and their corresponding ids
-    na_vorticies = [] #objects of mesocyclones which did not overlap with any rain cell
+    na_vorticies = [] # rotating updraughts which did not overlap with any rain cell
     
     for i, nowdate in enumerate(timesteps): # loop over integer hours
         
-        # compute vorticity fields on the 3 considered pressure levels
+        # compute vorticity fields on the 4 considered pressure levels
         zeta_400 = zeta_plev(fnames_p[i], fnames_s[i], 2)
         zeta_500 = zeta_plev(fnames_p[i], fnames_s[i], 3)
         zeta_600 = zeta_plev(fnames_p[i], fnames_s[i], 4)
         zeta_700 = zeta_plev(fnames_p[i], fnames_s[i], 5)
         zeta_4lev = np.stack([zeta_400, zeta_500, zeta_600, zeta_700])
         
-        # same for updraught velocity
+        # load updraught velocity fileds on the 4 considered pressure levels
         with xr.open_dataset(fnames_p[i]) as dset:
             w_400 = dset['W'][0][2]
             w_500 = dset['W'][0][3]
@@ -97,13 +100,18 @@ def track_Scells(day, timesteps, fnames_p, fnames_s, fname_h, rain_masks_name, r
             w_700 = dset['W'][0][5]
         w_4lev = np.stack([w_400, w_500, w_600, w_700])
         
-        # discriminate between positive and negative signed vorticies; label mesocyclone canditates on a 2D mask
+        # discriminate between positively and negatively signed vorticies; label mesocyclone canditates with 2D masks
         labeled_pos = label_above_thresholds(zeta_4lev, w_4lev, zeta_th, w_th, min_area, aura, "positive")
         labeled_neg = label_above_thresholds(zeta_4lev, w_4lev, zeta_th, w_th, min_area, aura, "negative")
+        
+        # find overlaps between mesocyclone canditates and rain cells, assign the mesocyclones to cells, store the other vorticies
         overlaps_pos, no_overlaps_pos = find_vortex_rain_overlaps(zeta_4lev, w_4lev, labeled_pos, rain_masks_hourly[i], zeta_th, w_th)
         overlaps_neg, no_overlaps_neg = find_vortex_rain_overlaps(zeta_4lev, w_4lev, labeled_neg, rain_masks_hourly[i], zeta_th, w_th)
+        # merge positive and negative vorticies into one dictionnary
+        overlaps = merge_dictionaries(overlaps_pos, overlaps_neg)
+        no_overlaps = merge_dictionaries(no_overlaps_pos, no_overlaps_neg)
         
-        for j, SC_id in enumerate(overlaps['cell_id']): # loop over mesocyclones which will be assigned to a rain cell
+        for j, SC_id in enumerate(overlaps['cell_id']): # loop over mesocyclones which are assigned to a rain cell
             
             # determine the rain cell id of the supercell
             if np.size(SC_id) > 1: # choose the biggest overlap
@@ -118,92 +126,112 @@ def track_Scells(day, timesteps, fnames_p, fnames_s, fname_h, rain_masks_name, r
                 sub_overlaps = None
                 sub_ids = None
             
-            # determine the mesocyclone centroid
+            # determine the mesocyclone centroid, in lon-lat coordinates
             coords = overlaps['coord'][j]
             cent_lon = float(np.mean(lons[coords[:,0], coords[:,1]]))
             cent_lat = float(np.mean(lats[coords[:,0], coords[:,1]]))
             
-            # if requested, determine the max hail diameter within the mesocyclone
-            if path_meso_h:
-                current_hail_meso = hail_meso[times_5min == nowdate] # 2D matrix
-                max_hail = float(np.nanmax(current_hail_meso[coords[:,0], coords[:,1]]))
-            else:
-                max_hail = None
-            
-            # determine whether the rain cell is a new supercell or not
+            # determine whether the cell is a new supercell or not
             if rain_cell_id in active_cells_ids:
                 index = active_cells_ids.index(rain_cell_id)
-                active_cells[index].append_candidate(nowdate, overlaps['signature'][j], overlaps['area'][j], float(overlaps['max_val'][j]),
-                                                     float(overlaps['mean_val'][j]), coords, round(cent_lon,2), round(cent_lat,2),
-                                                     overlap, max_hail, sub_ids, sub_overlaps)
+                active_cells[index].append_candidate(nowdate, overlaps['signature'][j], overlaps['area'][j], float(overlaps['max_zeta'][j]),
+                                                     float(overlaps['mean_zeta'][j]), float(overlaps['max_w'][j]), float(overlaps['mean_w'][j]),
+                                                     coords, round(cent_lon,2), round(cent_lat,2), overlap, sub_ids, sub_overlaps)
             else:
                 active_cells_ids.append(rain_cell_id)
-                new_SC = SuperCell(rain_cell_id, nowdate, overlaps['signature'][j], overlaps['area'][j], float(overlaps['max_val'][j]),
-                                   float(overlaps['mean_val'][j]), coords, round(cent_lon,2), round(cent_lat,2), overlap, max_hail,
-                                   sub_ids, sub_overlaps)
+                new_SC = SuperCell(rain_cell_id, nowdate, overlaps['signature'][j], overlaps['area'][j], float(overlaps['max_zeta'][j]),
+                                   float(overlaps['mean_zeta'][j]), float(overlaps['max_w'][j]), float(overlaps['mean_w'][j]),
+                                   coords, round(cent_lon,2), round(cent_lat,2), overlap, sub_ids, sub_overlaps)
                 active_cells.append(new_SC)
         
         for j, sgn in enumerate(no_overlaps["signature"]): # loop over not assigned vorticies
             
-            # determine the mesocyclone centroid
+            # determine the vortex centroid
             coords = no_overlaps['coord'][j]
             cent_lon = float(np.mean(lons[coords[:,0], coords[:,1]]))
             cent_lat = float(np.mean(lats[coords[:,0], coords[:,1]]))
             
-            na_vorticies.append(NA_Vortex(nowdate, sgn, no_overlaps['area'][j], float(no_overlaps['max_val'][j]),
-                                          float(no_overlaps['mean_val'][j]), coords, round(cent_lon,2), round(cent_lat,2)))
+            na_vorticies.append(NA_Vortex(nowdate, sgn, no_overlaps['area'][j], float(no_overlaps['max_zeta'][j]), float(no_overlaps['mean_zeta'][j]),
+                                          float(no_overlaps['max_w'][j]), float(no_overlaps['mean_w'][j]), coords, round(cent_lon,2), round(cent_lat,2)))
      
     
-    # hail file opening; TO BE RELOCATED
-    with xr.open_dataset(fname_h, engine="netcdf4") as ds:
-        hail = ds["DHAIL_MX"].values    
+    # hail file opening; distinguish case study from domain cases
+    if CS: # the 5min_2D concatenated files already span the case study time range
+        
+        fname_h = os.path.join(path_h, "cut_HAILlffd" + day.strftime("%Y%m%d") + ".nc")
+        with xr.open_dataset(fname_h, engine="netcdf4") as dset:
+            hail_fields = dset["DHAIL_MX"].values # 3D array
+            times_hail = pd.to_datetime(dset['time'].dt.round("5min").values)
+            
+    else: # for domain, need to switch 2D fields and times from 06-06 to 04-04 UTC, the time steps therefore match those of rain masks. TO BE TESTED !
+        
+        fname_h = os.path.join(path_h, "lffd" + day.strftime("%Y%m%d") + "_0606.nz")
+        with xr.open_dataset(fname_h, engine="netcdf4") as dset:
+            hail_fields = dset["DHAIL_MX"][:-24].values # 3D array
+            times_hail = pd.to_datetime(dset['time'].dt.round("5min")[:-24].values)
+        
+        day_before = day - pd.Timedelta(1,"d")
+        fname_h = os.path.join(path_h, "lffd" + day_before.strftime("%Y%m%d") + "_0606.nz")
+        with xr.open_dataset(fname_h, engine="netcdf4") as dset:
+            hail_fields_before = dset["DHAIL_MX"][-24:].values # 3D array
+            times_hail_before = pd.to_datetime(dset['time'].dt.round("5min")[-24:].values)
+        
+        hail_fields = np.concatenate([hail_fields_before, hail_fields])
+        times_hail = np.concatenate([times_hail_before, times_hail])
+        
+        if not np.array_equal(times_5min, times_hail): # check the two time steps lists match
+            print("rain masks time steps:")
+            print(times_5min)
+            print("5min_2D concatenated time steps:")
+            print(times_hail)
+            raise ValueError("rain masks and hail time steps do not match")
+            
     
-    # include the chosen rain cells attributes to the supercells
+    # include the rain cells attributes (datelist, centroid coordinates, max rain, max hail and max surface wind) to the supercells
     for i, ID in enumerate(active_cells_ids):
-        # extract rain cell centroid lon/lat coordinates, datelist and max rain rate values from rain tracks
+        # extract cell centroid lon/lat coordinates, datelist and max rain rate values from rain tracks
         cell_tracks = rain_tracks[ID]
         cell_lon = [round(x,2) for x in cell_tracks['lon']]
         cell_lat = [round(x,2) for x in cell_tracks['lat']]
         cell_datelist = pd.to_datetime(cell_tracks['datelist'])
-        cell_max_rain = cell_tracks['max_val']
-        cell_max_rain = [round(el*12,1) for el in cell_max_rain] # conversion of rain rate in mm/h and round
+        cell_max_rain = [round(el*12,1) for el in cell_tracks['max_val']] # conversion of rain rate in mm/h and round
         
-        # if requested, determine maximum hail diameter within the rain cell for each 5min-timestep in cell lifetime
-        if fnames_h is not None:
-            
-            cell_max_hail = []
-            rain_masks_for_hail = [np.array(mask) for k, mask in enumerate(rain_masks) if times_5min[k] in cell_datelist]
-            fnames_h_for_hail = [f for k, f in enumerate(fnames_h) if times_5min[k] in cell_datelist]
-            for k, fname_h in enumerate(fnames_h_for_hail):
-                with xr.open_dataset(fname_h) as dset:
-                    hail_field = np.array(dset['DHAIL_MX'][0])
-                hail_values = hail_field[rain_masks_for_hail[k] == ID]
-                # during some merging/splitting processes, the cell changes its id, making it undetectable on the rain masks ...
-                if len(hail_values) > 0: 
-                    cell_max_hail.append(round(float(np.max(hail_values)), 1))
-                else:
-                    cell_max_hail.append(float(0.0))
-        
-        else: # None object when not requested
-            cell_max_hail = None
-        
-        # maximum 10m wind speed within the rain cell for each hourly timestep in cell lifetime
-        cell_max_wind = []
-        hourly_cell_datelist = [t for t in cell_datelist if t.strftime("%M")=="00"]
-        rain_masks_for_wind = [np.array(mask) for k, mask in enumerate(rain_masks) if times_5min[k] in hourly_cell_datelist]
-        fnames_s_for_wind = [f for k, f in enumerate(fnames_s) if timesteps[k] in hourly_cell_datelist]
-        for j, fname_s in enumerate(fnames_s_for_wind):
-            with xr.open_dataset(fname_s) as dset:
-                max_wind = np.array(dset['VMAX_10M'][0])
-            wind_values = max_wind[rain_masks_for_wind[j] == ID]
+        # determine maximum hail diameter within the rain cell for each 5min-timestep in cell lifetime
+        cell_max_hail = []
+        rain_masks_for_hail = [np.array(mask) for k, mask in enumerate(rain_masks) if times_5min[k] in cell_datelist]
+        hail_fields_for_hail = [f for k, f in enumerate(hail_fields) if times_hail[k] in cell_datelist]
+        if len(rain_masks_for_hail) != len(hail_fields_for_hail): # check that the 5min_2D hail fields time steps contain cell datelist
+            raise IndexError("5min_2D concatenated files time steps do not fully contain cell datelist")
+        for k, hail_field in enumerate(hail_fields_for_hail):
+            hail_values = hail_field[rain_masks_for_hail[k] == ID]
             # during some merging/splitting processes, the cell changes its id, making it undetectable on the rain masks ...
-            if len(wind_values) > 0:
-                cell_max_wind.append(round(float(np.max(wind_values)), 1))
+            if len(hail_values) > 0: 
+                cell_max_hail.append(round(float(np.max(hail_values)), 1))
             else:
-                cell_max_wind.append(float(0.0))
+                cell_max_hail.append(None)
         
+        # for wole domain: maximum 10m wind speed within the rain cell for each hourly timestep in cell lifetime
+        if CS:
+            cell_max_wind = None
+        else:
+            cell_max_wind = []
+            hourly_cell_datelist = [t for t in cell_datelist if t.strftime("%M")=="00"]
+            rain_masks_for_wind = [np.array(mask) for k, mask in enumerate(rain_masks) if times_5min[k] in hourly_cell_datelist]
+            fnames_s_for_wind = [f for k, f in enumerate(fnames_s) if timesteps[k] in hourly_cell_datelist]
+            for j, fname_s in enumerate(fnames_s_for_wind):
+                with xr.open_dataset(fname_s) as dset:
+                    max_wind = np.array(dset['VMAX_10M'][0])
+                wind_values = max_wind[rain_masks_for_wind[j] == ID]
+                # during some merging/splitting processes, the cell changes its id, making it undetectable on the rain masks ...
+                if len(wind_values) > 0:
+                    cell_max_wind.append(round(float(np.max(wind_values)), 1))
+                else:
+                    cell_max_wind.append(None)
+        
+        # add rain cell attributes to supercell
         active_cells[i].add_raincell_attributes(cell_datelist, cell_lon, cell_lat, cell_max_rain, cell_max_hail, cell_max_wind)
     
+    # determine the minimum mesocyclone lifespan
     _ = [cell.post_processing() for cell in active_cells]
     
     return active_cells, na_vorticies, lons, lats
@@ -313,19 +341,34 @@ def find_vortex_rain_overlaps(zeta_4lev, w_4lev, labeled, rain_mask, zeta_th, w_
         #corr_cell_id = corr_cell_id[~np.isnan(corr_cell_id)].astype(int) #remove nans and convert from float to int type
                 
         # for mean and max, consider all values above the surface footprint that fulfill the duo-threshold criterion
+        # zeta_values = []
+        # w_values = []        
+        # for lev in range(4):
+        #     above_ths_coords = np.argwhere(np.logical_and(np.abs(zeta_4lev[lev]) >= zeta_th, w_4lev[lev] >= w_th))
+        #     val_coords = [c for c in coordinates.tolist() if c in above_ths_coords] # restrict footprint coordinates to above-thrs pixels, ie to the mesocyclone patch at that level
+        #     val_coords = np.array(val_coords)
+        #     if len(val_coords) > 0:
+        #         zeta_values.extend(zeta_4lev[lev, val_coords[:,0], val_coords[:,1]])
+        #         w_values.extend(w_4lev[lev, val_coords[:,0], val_coords[:,1]])
+        
+        # for mean and max values, consider all values above the surface footprint that fulfill the duo-threshold criterion
         zeta_values = []
         w_values = []
         for lev in range(4):
-            above_ths_coords = np.argwhere(np.logical_and(np.abs(zeta_4lev[lev]) >= zeta_th, w_4lev[lev] >= w_th))
-            val_coords = [c for c in above_ths_coords.tolist() if c in coordinates]
-            val_coords = np.array(val_coords)
-            if len(val_coords) > 0:
-                zeta_values.extend(zeta_4lev[lev, val_coords[:,0], val_coords[:,1]])
-                w_values.extend(w_4lev[lev, val_coords[:,0], val_coords[:,1]])
+            zeta_val_lev = zeta_4lev[lev, coordinates[:,0], coordinates[:,1]]
+            w_val_lev = w_4lev[lev, coordinates[:,0], coordinates[:,1]]
+            to_keep = np.logical_and(np.abs(zeta_val_lev) >= zeta_th, w_val_lev >= w_th)
+            if np.count_nonzero(to_keep) > 0:
+                zeta_val_lev, w_val_lev = zeta_val_lev[to_keep], w_val_lev[to_keep]
+                zeta_values.extend(zeta_val_lev)
+                w_values.extend(w_val_lev)
         
-        mean_zeta = round(np.mean(zeta_values), 1)
+        mean_zeta = round(np.mean(zeta_values), 5)
         sgn = np.sign(mean_zeta).astype(int)
-        max_zeta = round(np.max(np.abs(zeta_values)), 1)
+        #mean_zeta = "{:.2e}".format(mean_zeta)
+        max_zeta = np.max(np.abs(zeta_values))
+        max_zeta = round(sgn*max_zeta, 5)
+        #max_zeta = "{:.2e}".format(max_zeta)
         mean_w = round(np.mean(w_values), 1)
         max_w = round(np.max(w_values), 1)
         area = len(coordinates) # np.count_nonzero(labeled == VX_label)
@@ -336,7 +379,7 @@ def find_vortex_rain_overlaps(zeta_4lev, w_4lev, labeled, rain_mask, zeta_th, w_
             overlaps["overlap"].append(int(ovl))
             overlaps["signature"].append(int(sgn))
             overlaps["mean_zeta"].append(mean_zeta)
-            overlaps["max_zeta"].append(sgn*max_zeta)
+            overlaps["max_zeta"].append(max_zeta)
             overlaps["mean_w"].append(mean_w)
             overlaps["max_w"].append(max_w)
             overlaps["area"].append(area)
@@ -350,15 +393,15 @@ def find_vortex_rain_overlaps(zeta_4lev, w_4lev, labeled, rain_mask, zeta_th, w_
             overlaps["overlap"].append(sub_ovl) #this time the new cell_id and overlap elements are both vectors
             overlaps["signature"].append(int(sgn))
             overlaps["mean_zeta"].append(mean_zeta)
-            overlaps["max_zeta"].append(sgn*max_zeta)
+            overlaps["max_zeta"].append(max_zeta)
             overlaps["mean_w"].append(mean_w)
             overlaps["max_w"].append(max_w)
             overlaps["area"].append(area)
             overlaps["coord"].append(coordinates)
-        else: # no overlaps with any rain cell
+        else: # no overlaps with any rain cell -> not assigned vortex
             no_overlaps["signature"].append(int(sgn))
             no_overlaps["mean_zeta"].append(mean_zeta)
-            no_overlaps["max_zeta"].append(sgn*max_zeta)
+            no_overlaps["max_zeta"].append(max_zeta)
             no_overlaps["mean_w"].append(mean_w)
             no_overlaps["max_w"].append(max_w)
             no_overlaps["area"].append(area)
@@ -367,31 +410,43 @@ def find_vortex_rain_overlaps(zeta_4lev, w_4lev, labeled, rain_mask, zeta_th, w_
     return overlaps, no_overlaps
 
 
+def merge_dictionaries(dict1, dict2):
+    merged_dict = dict1.copy()  # start with a copy of the first dictionary
+    
+    for variable, value in dict2.items():
+        if variable in merged_dict:
+            merged_dict[variable].extend(value)  # extend the list if variable exists
+        else:
+            merged_dict[variable] = value  # add the new variable-value pair
+
+    return merged_dict
+
 
 class SuperCell:
     """
     supercell class with atributes for each cell
     """
 
-    def __init__(self, rain_cell_id, nowdate, signature, area, max_val, mean_val, coord, cent_lon, cent_lat, overlap, max_hail,
-                 sub_ids, sub_overlaps):
+    def __init__(self, rain_cell_id, nowdate, signature, area, max_zeta, mean_zeta, max_w, mean_w, coords, cent_lon, cent_lat,
+                 overlap, sub_ids, sub_overlaps):
         """
         initialise cell object
 
         in
         rain_cell_id: rain cell id that has just been detected as supercell, unique, int
-        nowdate: current date, datetime
+        nowdate: current hourly date, datetime
         signature: signature of the supercell, +1 or -1, int
-        area: area (in gridpoints) of the mesocyclone, int
-        max_val: maximum IUH value of the mesocyclone, float
-        mean_val: average IUH value of the mesocyclone, float
-        coord: gridpoint coordinates of the mesocyclone
+        area: area (in gridpoints) of the dilated mesocyclone footprint, int
+        max_zeta: maximum vorticity value of the mesocyclone, float
+        mean_zeta: average vorticity value of the mesocyclone, float
+        max_w: maximum updraught velocity value of the mesocyclone, float
+        mean_w: average updraught velocity value of the mesocyclone, float
+        coords: gridpoint coordinates of the mesocyclone
         cent_lon: longitude of mesocyclone centroid
         cent_lat: latitude of mesocyclone centroid
         overlap: overlap (in gridpoints) between the mesocyclone and the rain cell, int
-        max_hail: maximum hail diameter within the mesocyclone, float (None if not requested)
-        sub_ids: if the mesocyclone overlaps with more than 1 rain cell, list of the other rain cells ids, list of int
-        sub_overlaps: if the mesocyclone overlaps with more than 1 rain cell, list of the respective overlaps (in gridpoints), list of int
+        sub_ids: if the mesocyclone overlaps with more than one rain cell, list of the other rain cells ids, list of int
+        sub_overlaps: if the mesocyclone overlaps with more than one rain cell, list of the respective overlaps (in gridpoints), list of int
         """
         self.rain_cell_id = rain_cell_id # ID of the rain cell the supercell was assigned to
         self.meso_datelist = [] # integer hours at which a mesocyclone was detected within the supercell
@@ -400,21 +455,23 @@ class SuperCell:
         self.signature.append(signature)
         self.area = []
         self.area.append(area)
-        self.max_val = [] 
-        self.max_val.append(max_val)
-        self.mean_val = [] 
-        self.mean_val.append(mean_val)
+        self.max_zeta = [] 
+        self.max_zeta.append(max_zeta)
+        self.mean_zeta = [] 
+        self.mean_zeta.append(mean_zeta)
+        self.max_w = [] 
+        self.max_w.append(max_w)
+        self.mean_w = [] 
+        self.mean_w.append(mean_w)
         self.overlap = [] # overlaps between the respective mesocyclones and the supercell
         self.overlap.append(overlap)
-        self.updraft_min_lifespan = None
+        self.updraft_min_lifespan = None # will be filled in if several mesocyclones are detected at different time steps
         self.coordinates = []
-        self.coordinates.append(coord)
+        self.coordinates.append(coords)
         self.meso_lon = []
         self.meso_lon.append(cent_lon)
         self.meso_lat = []
         self.meso_lat.append(cent_lat)
-        self.max_hail = []
-        self.max_hail.append(max_hail)
         self.sub_ids = []
         self.sub_ids.append(sub_ids)
         self.sub_overlaps = []
@@ -437,7 +494,7 @@ class SuperCell:
         self.updraft_min_lifespan = self.meso_datelist[-1] - self.meso_datelist[0]
         
     
-    def append_candidate(self, nowdate, signature, area, max_val, mean_val, coord, cent_lon, cent_lat, overlap, max_hail,
+    def append_candidate(self, nowdate, signature, area, max_zeta, mean_zeta, max_w, mean_w, coords, cent_lon, cent_lat, overlap,
                          sub_ids, sub_overlaps):
         """
         appends the newly detected mesocyclone with the provided attributes to the self cell
@@ -445,13 +502,14 @@ class SuperCell:
         self.meso_datelist.append(nowdate)
         self.signature.append(signature)
         self.area.append(area)
-        self.max_val.append(max_val)
-        self.mean_val.append(mean_val)
-        self.coordinates.append(coord)
+        self.max_zeta.append(max_zeta)
+        self.mean_zeta.append(mean_zeta)
+        self.max_w.append(max_w)
+        self.mean_w.append(mean_w)
+        self.coordinates.append(coords)
         self.meso_lon.append(cent_lon)
         self.meso_lat.append(cent_lat)
         self.overlap.append(overlap)
-        self.max_hail.append(max_hail)
         self.sub_ids.append(sub_ids)
         self.sub_overlaps.append(sub_overlaps)
     
@@ -496,13 +554,14 @@ class SuperCell:
             "meso_datelist": [str(t)[:16] for t in self.meso_datelist],
             "signature": self.signature,
             "area": self.area, #[int(x) for x in self.area],
-            "max_val": self.max_val,
-            "mean_val": self.mean_val,
+            "max_zeta": self.max_zeta,
+            "mean_zeta": self.mean_zeta,
+            "max_w": self.max_w,
+            "mean_w": self.mean_w,
             "meso_lon": self.meso_lon,
             "meso_lat": self.meso_lat,
             "updraft_min_lifespan": int(self.updraft_min_lifespan / np.timedelta64(1, "h")),
             "overlap": self.overlap,
-            "meso_max_hail": self.max_hail,
             "sub_ids": self.sub_ids,
             "sub_overlaps": self.sub_overlaps,
             "cell_datelist": [str(t)[:16] for t in self.cell_datelist],
@@ -521,12 +580,14 @@ class NA_Vortex:
     Class for single-detected vorticies which have not been assigned to any rain cell, and hence not considered as mesocyclones
     """
     
-    def __init__(self, nowdate, signature, area, max_val, mean_val, coord, cent_lon, cent_lat):
+    def __init__(self, nowdate, signature, area, max_zeta, mean_zeta, max_w, mean_w, coord, cent_lon, cent_lat):
         self.date = nowdate
         self.signature = signature
         self.area = area
-        self.max_val = max_val
-        self.mean_val = mean_val
+        self.max_zeta = max_zeta
+        self.mean_zeta = mean_zeta
+        self.max_w = max_w
+        self.mean_w = mean_w
         self.coordinates = coord
         self.meso_lon = cent_lon
         self.meso_lat = cent_lat
@@ -543,8 +604,10 @@ class NA_Vortex:
             "date": str(self.date)[:16],
             "signature": self.signature,
             "area": self.area,
-            "max_val": self.max_val,
-            "mean_val": self.mean_val,
+            "max_zeta": self.max_zeta,
+            "mean_zeta": self.mean_zeta,
+            "max_w": self.max_w,
+            "mean_w": self.mean_w,
             "meso_lon": self.meso_lon,
             "meso_lat": self.meso_lat
         }
@@ -569,35 +632,34 @@ def write_to_json(cells, na_vorticies, filename):
     if len(cells) == 0:
         struct_SC = []
         data_structure = "no supercells found"
-
     elif isinstance(cells[0], SuperCell):  # single member
         struct_SC = [cell.to_dict() for cell in cells]
         data_structure = "supercell_data contains list of supercells, each supercell contains a dictionary of its parameters"
 
     if len(na_vorticies) == 0:
         struct_nav = []
-        data_structure += " ; no not assigned vorticies found"
-        
+        data_structure += " ; no not assigned vorticies found"   
     elif isinstance(na_vorticies[0], NA_Vortex):
         struct_nav = [nav.to_dict() for nav in na_vorticies]
-        data_structure += " ; na_vortex_data contains list of vorticies not assigned to supercells, each of which contains a dictionary of its parameters"
+        data_structure += " ; na_vortex_data contains list of vorticies not assigned to any rain cells, each of which contains a dictionary of its parameters"
 
     struct = {
-        "info": "supercell track data generated using Supercell Detection and Tracking (SDT)",
+        "info": "supercell track data generated using the second version of Supercell Detection and Tracking (SDT2)",
         "author": "Michael Blanc (mblanc@student.ethz.ch)",
         "data_structure": data_structure,
         "parameters": {
             "rain_cell_id": "id of the rain cell the supercell was assigned to",
             "meso_datelist": "list of datetimes corresponding to mesocyclone detection(s) within the supercell",
             "signature": "vorticity signature of the supercell (+1 for mesocyclones and -1 for mesoanticyclones)",
-            "area": "mesocyclone area in gridpoints (gp)",
-            "max_val": "maximum IUH value within the mesocyclone (m^2/s^2)",
-            "mean_val": "mean IUH value within the mesocyclone (m^2/s^2)",
+            "area": "mesocyclone area in gridpoints, after dilation and 2D footprint projection (gp)",
+            "max_zeta": "maximum vorticity value within the mesocyclone (1/s)",
+            "mean_zeta": "mean vorticity value within the mesocyclone (1/s)",
+            "max_w": "maximum updraught velocity value within the mesocyclone (m/s)",
+            "mean_w": "mean updraught velocity value within the mesocyclone (m/s)",
             "meso_lon": "longitude of mesocyclone centroid (°E)",
             "meso_lat": "latitude of mesocyclone centroid (°N)",
             "updraft_min_lifespan": "minimum lifespan of mesocyclone in hours",
             "overlap": "overlap in gridpoints between the (dilated) mesocyclone and the rain cell (gp)",
-            "meso_max_hail": "maximum hail diameter within the mesocyclone at the mesocyclone detection (mm)",
             "sub_ids": "list of other rain cells the mesocyclone overlaps with",
             "sub_overlaps": "list of respective overlaps (gp)",
             "cell_datelist": "list of datetime objects for each 5min-timestep in cell lifetime",

@@ -35,7 +35,7 @@ def main(outpath, day, hours, zeta_th, w_th, min_area=3, aura=1):
     os.makedirs(outpath, exist_ok=True)
     
     day_obj = pd.to_datetime(day, format="%Y%m%d")
-    print("processing day: ", day_obj.strftime("%Y/%m/%d"))
+    print("processing day: ", day_obj.strftime("%d/%m/%Y"))
     
     # prepare the data for the day
     print("preparing data")
@@ -47,7 +47,6 @@ def main(outpath, day, hours, zeta_th, w_th, min_area=3, aura=1):
     path_h = os.path.join(inpath, "5min_2D")
     
     # prepare corresponding file names
-    fname_h = os.path.join(path_h, "cut_HAILlffd" + day + ".nc")
     fnames_p = []
     fnames_s = []
     
@@ -68,13 +67,13 @@ def main(outpath, day, hours, zeta_th, w_th, min_area=3, aura=1):
     
     # track supercells
     print("tracking supercells")
-    supercells, na_vorticies, lons, lats = track_Scells(day_obj, timesteps, fnames_p, fnames_s, fname_h, rain_masks_name,
-                                                        rain_tracks_name, zeta_th, w_th, min_area, aura)
+    supercells, na_vorticies, lons, lats = track_Scells(day_obj, timesteps, fnames_p, fnames_s, path_h, rain_masks_name,
+                                                        rain_tracks_name, zeta_th, w_th, min_area, aura, CS=True)
     
     #write data to output files
     print("writing data to file")
-    outfile_json = os.path.join(outpath, "supercell_" + day + ".json")
-    outfile_nc = os.path.join(outpath, "meso_masks_" + day + ".nc")
+    outfile_json = os.path.join(outpath, "supercell_zetath" + str(zeta_th) + "_wth" + str(w_th) + "_" + day + ".json")
+    outfile_nc = os.path.join(outpath, "meso_masks_zetath" + str(zeta_th) + "_wth" + str(w_th) + "_" + day + ".nc")
     write_to_json(supercells, na_vorticies, outfile_json)
     write_masks_to_netcdf(supercells, lons, lats, outfile_nc)
 
@@ -83,6 +82,7 @@ def main(outpath, day, hours, zeta_th, w_th, min_area=3, aura=1):
     return
 
 #====================================================================================================================
+## all case studies in a row, several thresholds testing ##
 
 outpath = "/scratch/snx3000/mblanc/SDT/SDT2_output/current_climate/CaseStudies"
 CS_days = ['20120630', '20130727', '20130729', '20140625', '20170801', '20190610', '20190611', '20190613', '20190614',
@@ -97,6 +97,18 @@ for zeta_th in zeta_ths:
     for w_th in w_ths:
         for i, day in enumerate(CS_days):
             main(outpath, day, CS_ranges[i], zeta_th, w_th)
+
+#====================================================================================================================
+## one single day, single threshold pair
+
+# outpath = "/scratch/snx3000/mblanc/SDT/SDT2_output/current_climate/CaseStudies"
+# day = '20170801'
+# hours = np.arange(18,24)
+# zeta_th = 4
+# w_th = 6
+# main(outpath, day, hours, zeta_th, w_th)
+
+#====================================================================================================================
 
 # if __name__ == "__main__":
 #     p = argparse.ArgumentParser(description="tracks cells")

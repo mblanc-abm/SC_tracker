@@ -10,7 +10,7 @@ from matplotlib.colors import TwoSlopeNorm, ListedColormap
 from matplotlib.ticker import MultipleLocator
 from skimage.segmentation import expand_labels
 
-from Scell_tracker import label_above_thresholds, find_vortex_rain_overlaps
+from Scell_tracker import label_above_thresholds, find_vortex_rain_overlaps, merge_dictionaries
 
 import sys
 sys.path.append("../first_visu")
@@ -55,7 +55,7 @@ def plot_vortex_rain_masks(lons, lats, labeled_vx, cmap_vx, levels_vx, ticks_vx,
 
 #================================================================================================================================
 #inputs
-dtstr = "20120630170000" # to be filled: full date and time of timeshot
+dtstr = "20170801210000" # to be filled: full date and time of timeshot
 dt = pd.to_datetime(dtstr, format="%Y%m%d%H%M%S")
 aura = 1
 zeta_th = 4e-3
@@ -108,13 +108,15 @@ cmap_mask = ListedColormap(colors)
 # search and label vortices, and find overlaps
 labeled_pos = label_above_thresholds(zeta_4lev, w_4lev, zeta_th, w_th, min_area, aura, "positive")
 labeled_neg = label_above_thresholds(zeta_4lev, w_4lev, zeta_th, w_th, min_area, aura, "negative")
-overlaps_pos, _ = find_vortex_rain_overlaps(zeta_4lev, w_4lev, labeled_pos, mask, zeta_th, w_th)
-overlaps_neg, _ = find_vortex_rain_overlaps(zeta_4lev, w_4lev, labeled_neg, mask, zeta_th, w_th)
+overlaps_pos, no_overlaps_pos = find_vortex_rain_overlaps(zeta_4lev, w_4lev, labeled_pos, mask, zeta_th, w_th)
+overlaps_neg, no_overlaps_neg = find_vortex_rain_overlaps(zeta_4lev, w_4lev, labeled_neg, mask, zeta_th, w_th)
 labeled_pos = np.where(labeled_pos == 0, np.nan, labeled_pos)
 labeled_neg = np.where(labeled_neg == 0, np.nan, labeled_neg)
+overlaps = merge_dictionaries(overlaps_pos, overlaps_neg)
+no_overlaps = merge_dictionaries(no_overlaps_pos, no_overlaps_neg)
 
-print(overlaps_pos)
-print(overlaps_neg)
+print(overlaps)
+print(no_overlaps)
 
 ## plot positive and negative vorticies, if any, together with the rain mask
 

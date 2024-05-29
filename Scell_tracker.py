@@ -192,6 +192,7 @@ def track_Scells(day, timesteps, fnames_p, fnames_s, path_h, rain_masks_name, ra
         raise IndexError("rain masks time steps are not all contained in hail fields time steps.")
     
     # check whether rain masks and hail fields have same shapes, and therefore whether tha max hail values can be determined
+    determine_cell_max_hail = True
     if np.shape(hail_fields[0]) != np.shape(rain_masks[0]):
         determine_cell_max_hail = False
         print("Warning: hail fields and rain masks shapes do not match; the cell max hail diameter cannot be determined.")

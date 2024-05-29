@@ -90,7 +90,7 @@ CS_days = ['20120630', '20130727', '20130729', '20140625', '20170801', '20190610
 CS_ranges = [np.arange(14,24), np.arange(14,23), np.arange(7,16), np.arange(10,17), np.arange(18,24), np.arange(16,21),
               np.arange(9,17), np.arange(17,20), np.arange(18,24), np.arange(13,22), np.arange(13,19), np.arange(10,22),
               np.arange(11,21), np.arange(13,17), np.arange(17,20), np.arange(11,16)]
-zeta_ths = [4,5,6]
+zeta_ths = np.array([4,5,6])*1e-3
 w_ths = [5,6,7]
 
 for zeta_th in zeta_ths:

@@ -100,6 +100,10 @@ def track_Scells(day, timesteps, fnames_p, fnames_s, path_h, rain_masks_name, ra
             w_700 = dset['W'][0][5]
         w_4lev = np.stack([w_400, w_500, w_600, w_700])
         
+        # check whether rain masks and wind fields have same shapes; if not the case, crash the algorithm
+        if np.shape(w_400) != np.shape(rain_masks[0]):
+            raise IndexError("Wind fields and rain masks have different shapes.")
+        
         # discriminate between positively and negatively signed vorticies; label mesocyclone canditates with 2D masks
         labeled_pos = label_above_thresholds(zeta_4lev, w_4lev, zeta_th, w_th, min_area, aura, "positive")
         labeled_neg = label_above_thresholds(zeta_4lev, w_4lev, zeta_th, w_th, min_area, aura, "negative")
@@ -163,7 +167,7 @@ def track_Scells(day, timesteps, fnames_p, fnames_s, path_h, rain_masks_name, ra
             hail_fields = dset["DHAIL_MX"].values # 3D array
             times_hail = pd.to_datetime(dset['time'].dt.round("5min").values)
             
-    else: # for domain, need to switch 2D fields and times from 06-06 to 04-04 UTC, the time steps therefore match those of rain masks. TO BE TESTED !
+    else: # for domain, need to switch 2D fields and times from 06-06 to 04-04 UTC, so the time steps match those of rain masks. TO BE TESTED !
         
         fname_h = os.path.join(path_h, "lffd" + day.strftime("%Y%m%d") + "_0606.nz")
         with xr.open_dataset(fname_h, engine="netcdf4") as dset:
@@ -178,13 +182,19 @@ def track_Scells(day, timesteps, fnames_p, fnames_s, path_h, rain_masks_name, ra
         
         hail_fields = np.concatenate([hail_fields_before, hail_fields])
         times_hail = np.concatenate([times_hail_before, times_hail])
-        
-        if not np.array_equal(times_5min, times_hail): # check the two time steps lists match
-            print("rain masks time steps:")
-            print(times_5min)
-            print("5min_2D concatenated time steps:")
-            print(times_hail)
-            raise ValueError("rain masks and hail time steps do not match")
+    
+    # check whether rain masks time steps are contained in hail fields time steps, crash the algorithm otherwise
+    if not np.all(np.isin(times_5min, times_hail)):
+        print("rain masks time steps")
+        print(times_5min)
+        print("hail fields time steps")
+        print(times_hail)
+        raise IndexError("rain masks time steps are not all contained in hail fields time steps.")
+    
+    # check whether rain masks and hail fields have same shapes, and therefore whether tha max hail values can be determined
+    if np.shape(hail_fields[0]) != np.shape(rain_masks[0]):
+        determine_cell_max_hail = False
+        print("Warning: hail fields and rain masks shapes do not match; the cell max hail diameter cannot be determined.")
             
     
     # include the rain cells attributes (datelist, centroid coordinates, max rain, max hail and max surface wind) to the supercells
@@ -197,18 +207,21 @@ def track_Scells(day, timesteps, fnames_p, fnames_s, path_h, rain_masks_name, ra
         cell_max_rain = [round(el*12,1) for el in cell_tracks['max_val']] # conversion of rain rate in mm/h and round
         
         # determine maximum hail diameter within the rain cell for each 5min-timestep in cell lifetime
-        cell_max_hail = []
-        rain_masks_for_hail = [np.array(mask) for k, mask in enumerate(rain_masks) if times_5min[k] in cell_datelist]
-        hail_fields_for_hail = [f for k, f in enumerate(hail_fields) if times_hail[k] in cell_datelist]
-        if len(rain_masks_for_hail) != len(hail_fields_for_hail): # check that the 5min_2D hail fields time steps contain cell datelist
-            raise IndexError("5min_2D concatenated files time steps do not fully contain cell datelist")
-        for k, hail_field in enumerate(hail_fields_for_hail):
-            hail_values = hail_field[rain_masks_for_hail[k] == ID]
-            # during some merging/splitting processes, the cell changes its id, making it undetectable on the rain masks ...
-            if len(hail_values) > 0: 
-                cell_max_hail.append(round(float(np.max(hail_values)), 1))
-            else:
-                cell_max_hail.append(None)
+        if not determine_cell_max_hail:
+            cell_max_hail = None
+        else:
+            cell_max_hail = []
+            rain_masks_for_hail = [np.array(mask) for k, mask in enumerate(rain_masks) if times_5min[k] in cell_datelist]
+            hail_fields_for_hail = [f for k, f in enumerate(hail_fields) if times_hail[k] in cell_datelist]
+            if len(rain_masks_for_hail) != len(hail_fields_for_hail): # check that the 5min_2D hail fields time steps contain cell datelist
+                raise IndexError("5min_2D concatenated files time steps do not fully contain cell datelist")
+            for k, hail_field in enumerate(hail_fields_for_hail):
+                hail_values = hail_field[rain_masks_for_hail[k] == ID]
+                # during some merging/splitting processes, the cell changes its id, making it undetectable on the rain masks ...
+                if len(hail_values) > 0: 
+                    cell_max_hail.append(round(float(np.max(hail_values)), 1))
+                else:
+                    cell_max_hail.append(None)
         
         # for wole domain: maximum 10m wind speed within the rain cell for each hourly timestep in cell lifetime
         if CS:
@@ -274,10 +287,9 @@ def label_above_thresholds(zeta_4lev, w_4lev, zeta_th, w_th, min_area, aura, sgn
     labeled = []
     for i in range(4):
         lbd, _ = ndimage.label(above_thresholds[i], structure=np.ones((3,3))) # 8-connectivity
-        labels = np.unique(lbd)
-        labels = labels[labels != 0]  # remove zero, corresponding to the background
-        for label in labels:
-            count = np.count_nonzero(lbd == label)
+        labels, counts = np.unique(lbd, return_counts=True)
+        labels, counts = labels[1:], counts[1:]  # remove zero, corresponding to the background
+        for label, count in zip(labels, counts):
             if count < min_area:
                 lbd[lbd == label] = 0
         lbd = expand_labels(lbd, distance=aura) # dilates label to counteract vortex tilting with height
@@ -293,7 +305,7 @@ def label_above_thresholds(zeta_4lev, w_4lev, zeta_th, w_th, min_area, aura, sgn
     for i in range(4):
         # labels of current level patterns fulfilling all the criteria, if any; should not contain any background pixel; can be empty
         labels_tokeep = np.unique(labeled[i][vc_4lev])
-        labels_tokeep = labels_tokeep[labels_tokeep != 0]  # remove zero, corresponding to the background
+        labels_tokeep = labels_tokeep[labels_tokeep != 0]  # remove zero, corresponding to the background, if any
         labeled[i] = np.where(np.isin(labeled[i], labels_tokeep), 1, 0) # filter out vertically inconsistent patterns and make binary labeling        
     
     # aggregate the binary masks on the horizontal plane to create a 2D footprint and re-label the patterns
@@ -339,6 +351,8 @@ def find_vortex_rain_overlaps(zeta_4lev, w_4lev, labeled, rain_mask, zeta_th, w_
         ovl_matrix = np.array(ovl_matrix)
         corr_cell_id = np.unique(rain_mask[ovl_matrix]).astype(int)
         #corr_cell_id = corr_cell_id[~np.isnan(corr_cell_id)].astype(int) #remove nans and convert from float to int type
+        if np.any(np.isnan(corr_cell_id)):
+            print("Warning: overlap matrix between rain cell(s) " + str(corr_cell_id) + " and vortex " + str(VX_label + "containes nan(s)."))
                 
         # for mean and max, consider all values above the surface footprint that fulfill the duo-threshold criterion
         # zeta_values = []

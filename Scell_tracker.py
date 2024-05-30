@@ -149,8 +149,8 @@ def track_Scells(day, timesteps, fnames_p, fnames_s, path_h, rain_masks_name, ra
         labeled_neg = label_above_thresholds(zeta_4lev, w_4lev, zeta_th, w_th, min_area, aura, "negative")
         
         # find overlaps between mesocyclone canditates and rain cells, assign the mesocyclones to cells, store the other vorticies
-        overlaps_pos, no_overlaps_pos = find_vortex_rain_overlaps(zeta_4lev, w_4lev, labeled_pos, rain_masks_hourly[i], zeta_th, w_th)
-        overlaps_neg, no_overlaps_neg = find_vortex_rain_overlaps(zeta_4lev, w_4lev, labeled_neg, rain_masks_hourly[i], zeta_th, w_th)
+        overlaps_pos, no_overlaps_pos = find_vortex_rain_overlaps(zeta_4lev, w_4lev, labeled_pos, rain_masks_hourly[i], zeta_th, w_th, 1)
+        overlaps_neg, no_overlaps_neg = find_vortex_rain_overlaps(zeta_4lev, w_4lev, labeled_neg, rain_masks_hourly[i], zeta_th, w_th, -1)
         # merge positive and negative vorticies into one dictionnary
         overlaps = merge_dictionaries(overlaps_pos, overlaps_neg)
         no_overlaps = merge_dictionaries(no_overlaps_pos, no_overlaps_neg)
@@ -328,7 +328,7 @@ def label_above_thresholds(zeta_4lev, w_4lev, zeta_th, w_th, min_area, aura, sgn
 
 
 
-def find_vortex_rain_overlaps(zeta_4lev, w_4lev, labeled, rain_mask, zeta_th, w_th):
+def find_vortex_rain_overlaps(zeta_4lev, w_4lev, labeled, rain_mask, zeta_th, w_th, sgn):
     """
     finds overlaps between vorticies and rain cells for mesocyclone -> rain cell association
     outputs SCs to rain cells association with overlap, SC signature, max values, mean values and area
@@ -340,6 +340,7 @@ def find_vortex_rain_overlaps(zeta_4lev, w_4lev, labeled, rain_mask, zeta_th, w_
     rain_mask: labeled rain cells (nan is background, cell ids start at 0), 2D array
     zeta_th : vorticity threshold value, float
     w_th : updraught velocity threshold value, float
+    sgn : signature of the vorticies, either 1 (positive) or -1 (negative), int
     
     out
     overlaps: a set containing 6 columns; detected mesocyclones are classified according to their signature (RM of LM), max zeta and w values,
@@ -364,7 +365,7 @@ def find_vortex_rain_overlaps(zeta_4lev, w_4lev, labeled, rain_mask, zeta_th, w_
         corr_cell_id = np.unique(rain_mask[ovl_matrix]).astype(int)
         #corr_cell_id = corr_cell_id[~np.isnan(corr_cell_id)].astype(int) #remove nans and convert from float to int type
         if np.any(np.isnan(corr_cell_id)):
-            print("Warning: overlap matrix between rain cell(s) " + str(corr_cell_id) + " and vortex " + str(VX_label + "containes nan(s)."))
+            raise TypeError("overlap matrix between rain cell(s) " + str(corr_cell_id) + " and vortex " + str(VX_label + "containes nan(s)."))
                 
         # for mean and max, consider all values above the surface footprint that fulfill the duo-threshold criterion
         # zeta_values = []
@@ -383,14 +384,14 @@ def find_vortex_rain_overlaps(zeta_4lev, w_4lev, labeled, rain_mask, zeta_th, w_
         for lev in range(4):
             zeta_val_lev = zeta_4lev[lev, coordinates[:,0], coordinates[:,1]]
             w_val_lev = w_4lev[lev, coordinates[:,0], coordinates[:,1]]
-            to_keep = np.logical_and(np.abs(zeta_val_lev) >= zeta_th, w_val_lev >= w_th)
+            to_keep = np.logical_and(sgn*zeta_val_lev >= zeta_th, w_val_lev >= w_th)
             if np.count_nonzero(to_keep) > 0:
                 zeta_val_lev, w_val_lev = zeta_val_lev[to_keep], w_val_lev[to_keep]
                 zeta_values.extend(zeta_val_lev)
                 w_values.extend(w_val_lev)
         
         mean_zeta = round(np.mean(zeta_values), 5)
-        sgn = np.sign(mean_zeta).astype(int)
+        #sgn = np.sign(mean_zeta).astype(int)
         #mean_zeta = "{:.2e}".format(mean_zeta)
         max_zeta = np.max(np.abs(zeta_values))
         max_zeta = round(sgn*max_zeta, 5)

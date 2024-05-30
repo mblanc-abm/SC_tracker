@@ -220,7 +220,7 @@ def track_Scells(day, timesteps, fnames_p, fnames_s, path_h, rain_masks_name, ra
         
         # determine maximum hail diameter within the rain cell for each 5min-timestep in cell lifetime
         if not determine_cell_max_hail:
-            cell_max_hail = None
+            cell_max_hail = np.nan
         else:
             cell_max_hail = []
             rain_masks_for_hail = [np.array(mask) for k, mask in enumerate(rain_masks) if times_5min[k] in cell_datelist]
@@ -233,11 +233,11 @@ def track_Scells(day, timesteps, fnames_p, fnames_s, path_h, rain_masks_name, ra
                 if len(hail_values) > 0: 
                     cell_max_hail.append(round(float(np.max(hail_values)), 1))
                 else:
-                    cell_max_hail.append(None)
+                    cell_max_hail.append(np.nan)
         
         # for wole domain: maximum 10m wind speed within the rain cell for each hourly timestep in cell lifetime
         if CS:
-            cell_max_wind = None
+            cell_max_wind = np.nan
         else:
             cell_max_wind = []
             hourly_cell_datelist = [t for t in cell_datelist if t.strftime("%M")=="00"]
@@ -251,7 +251,7 @@ def track_Scells(day, timesteps, fnames_p, fnames_s, path_h, rain_masks_name, ra
                 if len(wind_values) > 0:
                     cell_max_wind.append(round(float(np.max(wind_values)), 1))
                 else:
-                    cell_max_wind.append(None)
+                    cell_max_wind.append(np.nan)
         
         # add rain cell attributes to supercell
         active_cells[i].add_raincell_attributes(cell_datelist, cell_lon, cell_lat, cell_max_rain, cell_max_hail, cell_max_wind)

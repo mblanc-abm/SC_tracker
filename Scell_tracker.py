@@ -179,19 +179,19 @@ def track_Scells(day, timesteps, fnames_p, fnames_s, path_h, rain_masks_name, ra
             cent_lat = float(np.mean(lats[coords[:,0], coords[:,1]]))
             
             # determine the max hail diameter within the mesocyclone
-            meso_max_hail = float(np.nanmax(current_hail_field[coords[:,0], coords[:,1]]))
+            meso_max_hail = float(round(np.nanmax(current_hail_field[coords[:,0], coords[:,1]])), 1)
             
             # determine whether the cell is a new supercell or not
             if rain_cell_id in active_cells_ids:
                 index = active_cells_ids.index(rain_cell_id)
                 active_cells[index].append_candidate(nowdate, overlaps['signature'][j], overlaps['area'][j], float(overlaps['max_zeta'][j]),
                                                      float(overlaps['mean_zeta'][j]), float(overlaps['max_w'][j]), float(overlaps['mean_w'][j]),
-                                                     meso_max_hail, coords, round(cent_lon,2), round(cent_lat,2), overlap, sub_ids, sub_overlaps)
+                                                     meso_max_hail, coords, round(cent_lon,3), round(cent_lat,3), overlap, sub_ids, sub_overlaps)
             else:
                 active_cells_ids.append(rain_cell_id)
                 new_SC = SuperCell(rain_cell_id, nowdate, overlaps['signature'][j], overlaps['area'][j], float(overlaps['max_zeta'][j]),
                                    float(overlaps['mean_zeta'][j]), float(overlaps['max_w'][j]), float(overlaps['mean_w'][j]),
-                                   meso_max_hail, coords, round(cent_lon,2), round(cent_lat,2), overlap, sub_ids, sub_overlaps)
+                                   meso_max_hail, coords, round(cent_lon,3), round(cent_lat,3), overlap, sub_ids, sub_overlaps)
                 active_cells.append(new_SC)
         
         for j, sgn in enumerate(no_overlaps["signature"]): # loop over not assigned vorticies
@@ -202,19 +202,19 @@ def track_Scells(day, timesteps, fnames_p, fnames_s, path_h, rain_masks_name, ra
             cent_lat = float(np.mean(lats[coords[:,0], coords[:,1]]))
             
             # determine the max hail diameter within the vortex
-            vx_max_hail = float(np.nanmax(current_hail_field[coords[:,0], coords[:,1]]))
+            vx_max_hail = float(round(np.nanmax(current_hail_field[coords[:,0], coords[:,1]])), 1)
             
             na_vorticies.append(NA_Vortex(nowdate, sgn, no_overlaps['area'][j], float(no_overlaps['max_zeta'][j]), float(no_overlaps['mean_zeta'][j]),
                                           float(no_overlaps['max_w'][j]), float(no_overlaps['mean_w'][j]), vx_max_hail, coords,
-                                          round(cent_lon,2), round(cent_lat,2)))
+                                          round(cent_lon,3), round(cent_lat,3)))
             
     
     # include the rain cells attributes (datelist, centroid coordinates, max rain, max hail and max surface wind) to the supercells
     for i, ID in enumerate(active_cells_ids):
         # extract cell centroid lon/lat coordinates, datelist and max rain rate values from rain tracks
         cell_tracks = rain_tracks[ID]
-        cell_lon = [round(x,2) for x in cell_tracks['lon']]
-        cell_lat = [round(x,2) for x in cell_tracks['lat']]
+        cell_lon = [round(x,3) for x in cell_tracks['lon']]
+        cell_lat = [round(x,3) for x in cell_tracks['lat']]
         cell_datelist = pd.to_datetime(cell_tracks['datelist'])
         cell_max_rain = [round(el*12,1) for el in cell_tracks['max_val']] # conversion of rain rate in mm/h and round
         

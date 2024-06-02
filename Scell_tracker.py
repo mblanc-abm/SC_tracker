@@ -179,14 +179,14 @@ def track_Scells(day, timesteps, fnames_p, fnames_s, path_h, rain_masks_name, ra
             cent_lat = float(np.mean(lats[coords[:,0], coords[:,1]]))
             
             # determine the max hail diameter within the mesocyclone
-            meso_max_hail = float(round(np.nanmax(current_hail_field[coords[:,0], coords[:,1]])), 1)
+            meso_max_hail = float(np.nanmax(current_hail_field[coords[:,0], coords[:,1]]))
             
             # determine whether the cell is a new supercell or not
             if rain_cell_id in active_cells_ids:
                 index = active_cells_ids.index(rain_cell_id)
                 active_cells[index].append_candidate(nowdate, overlaps['signature'][j], overlaps['area'][j], float(overlaps['max_zeta'][j]),
                                                      float(overlaps['mean_zeta'][j]), float(overlaps['max_w'][j]), float(overlaps['mean_w'][j]),
-                                                     meso_max_hail, coords, round(cent_lon,3), round(cent_lat,3), overlap, sub_ids, sub_overlaps)
+                                                     round(meso_max_hail,1), coords, round(cent_lon,3), round(cent_lat,3), overlap, sub_ids, sub_overlaps)
             else:
                 active_cells_ids.append(rain_cell_id)
                 new_SC = SuperCell(rain_cell_id, nowdate, overlaps['signature'][j], overlaps['area'][j], float(overlaps['max_zeta'][j]),
@@ -202,10 +202,10 @@ def track_Scells(day, timesteps, fnames_p, fnames_s, path_h, rain_masks_name, ra
             cent_lat = float(np.mean(lats[coords[:,0], coords[:,1]]))
             
             # determine the max hail diameter within the vortex
-            vx_max_hail = float(round(np.nanmax(current_hail_field[coords[:,0], coords[:,1]])), 1)
+            vx_max_hail = float(np.nanmax(current_hail_field[coords[:,0], coords[:,1]]))
             
             na_vorticies.append(NA_Vortex(nowdate, sgn, no_overlaps['area'][j], float(no_overlaps['max_zeta'][j]), float(no_overlaps['mean_zeta'][j]),
-                                          float(no_overlaps['max_w'][j]), float(no_overlaps['mean_w'][j]), vx_max_hail, coords,
+                                          float(no_overlaps['max_w'][j]), float(no_overlaps['mean_w'][j]), round(vx_max_hail,1), coords,
                                           round(cent_lon,3), round(cent_lat,3)))
             
     

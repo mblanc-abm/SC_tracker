@@ -47,7 +47,7 @@ def plot_fmap(lons, lats, fmap, typ, season=False, year=None, zoom=False, filter
         option to filter out supercell tracks whose mesocyclone peak intensity is weaker than iuh_thresh; default if None, equivalent to 75 m^2/s^2
         displayed in the figure title and name
     addname: str
-        option to add additional information to figure name
+        option to add additional information to figure name and title
     maxval: float
         option to set a maximum frequency value displayed by the colorbar, for comparison purposes
 
@@ -100,7 +100,10 @@ def plot_fmap(lons, lats, fmap, typ, season=False, year=None, zoom=False, filter
         lab = r"number of " + typ + "s per 4.84 $km^2$"
     if iuh_thresh:
         figname += "_iuhpt" + str(round(iuh_thresh))
-    figname += addname + ".png"
+    
+    if addname:
+        figname += "_" + addname + ".png"
+        title += ", " + addname
     
     plt.colorbar(cont, orientation=cbar_orientation, label=lab)
     
@@ -118,7 +121,7 @@ def plot_fmap(lons, lats, fmap, typ, season=False, year=None, zoom=False, filter
 def resolve_overlaps(rain_masks):
     """
     resolves overlaps for masks method: for every grid point, discards the additional counts of the rain cells overlapping several times
-    with themselves, so that a single, overlapping raintrack only counts as 1
+    with themselves, so that a single, overlapping raintracks only counts as 1
 
     Parameters
     ----------
@@ -141,7 +144,7 @@ def resolve_overlaps(rain_masks):
     return counts
 
 
-def seasonal_supercell_tracks_model_fmap(season, filtering=True, skipped_days=None, conv=True, iuh_thresh=None):
+def seasonal_supercell_tracks_model_fmap(season, filtering=False, skipped_days=None, conv=True, iuh_thresh=None):
     """
     Computes the seasonal supercell frequency map using tracks method over the model whole domain
     Takes care of overlaps by default
@@ -174,7 +177,7 @@ def seasonal_supercell_tracks_model_fmap(season, filtering=True, skipped_days=No
     daylist = pd.date_range(start_day, end_day)
     
     # load lons and lats static fields
-    with xr.open_dataset("/scratch/snx3000/mblanc/fmaps_data/model_masks/meso_season2011.nc") as dset:
+    with xr.open_dataset("/scratch/snx3000/mblanc/SDT/SDT2_output/current_climate/domain/meso_masks_" + season + "0401.nc") as dset:
         lons = dset["lon"].values
         lats = dset["lat"].values
     
@@ -186,7 +189,8 @@ def seasonal_supercell_tracks_model_fmap(season, filtering=True, skipped_days=No
         skipped_days = pd.to_datetime(skipped_days, format="%Y%m%d")
         daylist = [day for day in daylist if day not in skipped_days]
     
-    SC_path = "/scratch/snx3000/mblanc/SDT_output/seasons/" + season + "/"
+    #SC_path = "/scratch/snx3000/mblanc/SDT_output/seasons/" + season + "/"
+    SC_path = "/scratch/snx3000/mblanc/SDT/SDT2_output/current_climate/domain/"
     SC_files = []
     for day in daylist:
         SC_files.append(SC_path + "supercell_" + day.strftime("%Y%m%d") + ".json")
@@ -712,12 +716,12 @@ def supercell_tracks_model_obs_comp_2016_2021_fmaps(conv=True, save=False):
 # model data ##
 
 # parser = argparse.ArgumentParser()
-# parser.add_argument("iuh_thresh", type=float)
+# parser.add_argument("season", type=str)
 # args = parser.parse_args()
 
 # skipped_days = ['20120604', '20140923', '20150725', '20160927', '20170725']
 # climate = "current"
-# #season = args.season
+# season = args.season
 # years = ["2011", "2012", "2013", "2014", "2015", "2016", "2017", "2018", "2019", "2020", "2021"]
 # method = "model_tracks"
 # iuh_thresh = args.iuh_thresh
@@ -734,12 +738,11 @@ def supercell_tracks_model_obs_comp_2016_2021_fmaps(conv=True, save=False):
 # filename_SC = "/scratch/snx3000/mblanc/fmaps_data/" + method + "/SC_season" + season + "_filtered.nc"
 # write_to_netcdf(lons, lats, counts_SC, filename_SC)
 
-# for season in years:
-#     lons, lats, counts_SC = seasonal_supercell_tracks_model_fmap(season, skipped_days=skipped_days, iuh_thresh=iuh_thresh)
-#     plot_fmap(lons, lats, counts_SC, "supercell", season=True, year=season, zoom=False, filtering=True, conv=True, save=True, iuh_thresh=iuh_thresh)
-#     plot_fmap(lons, lats, counts_SC, "supercell", season=True, year=season, zoom=True, filtering=True, conv=True, save=True, iuh_thresh=iuh_thresh)
-#     filename_SC = "/scratch/snx3000/mblanc/fmaps_data/" + method + "/SC_season" + season + "_filtered_conv_iuhpt" + str(round(iuh_thresh)) + ".nc"
-#     write_to_netcdf(lons, lats, counts_SC, filename_SC)
+#lons, lats, counts_SC = seasonal_supercell_tracks_model_fmap(season)
+#plot_fmap(lons, lats, counts_SC, "supercell", season=True, year=season, zoom=False, filtering=True, conv=True, save=True, iuh_thresh=iuh_thresh)
+#plot_fmap(lons, lats, counts_SC, "supercell", season=True, year=season, zoom=True, filtering=True, conv=True, save=True, iuh_thresh=iuh_thresh)
+#filename_SC = "/scratch/snx3000/mblanc/fmaps_data/SDT2/" + method + "/SC_season" + season + "_conv.nc"
+#write_to_netcdf(lons, lats, counts_SC, filename_SC)
 
 ## obs data ##
 
@@ -762,24 +765,24 @@ def supercell_tracks_model_obs_comp_2016_2021_fmaps(conv=True, save=False):
 # seasonal map from stored data
 
 # season = "2021"
-# # years = ["2011", "2012", "2013", "2014", "2015", "2016", "2017", "2018", "2019", "2020", "2021"]
+# #years = ["2011", "2012", "2013", "2014", "2015", "2016", "2017", "2018", "2019", "2020", "2021"]
 # method = "model_tracks"
-# typ = "rain"
+# typ = "supercell"
 
-# with xr.open_dataset("/scratch/snx3000/mblanc/fmaps_data/" + method + "/rain_season" + season + "_conv_CT1.nc") as dset:
+# with xr.open_dataset("/scratch/snx3000/mblanc/fmaps_data/SDT1/" + method + "/SC_season" + season + "_filtered_conv.nc") as dset:
 #     counts1 = dset['frequency_map']
 #     lons = dset['lon'].values
 #     lats = dset['lat'].values
 
-# with xr.open_dataset("/scratch/snx3000/mblanc/fmaps_data/" + method + "/rain_season" + season + "_conv_CT2.nc") as dset:
+# with xr.open_dataset("/scratch/snx3000/mblanc/fmaps_data/SDT2/" + method + "/SC_season" + season + "_conv.nc") as dset:
 #     counts2 = dset['frequency_map']
 
 # maxval = np.max((np.max(counts1), np.max(counts2)))
 
-# plot_fmap(lons, lats, counts2, typ, season=True, year=season, zoom=True, conv=True, save=True, addname="CT2", maxval=maxval)
-# plot_fmap(lons, lats, counts2, typ, season=True, year=season, zoom=False, conv=True, save=True, addname="CT2", maxval=maxval)
-# plot_fmap(lons, lats, counts1, typ, season=True, year=season, zoom=True, conv=True, save=True, addname="CT1", maxval=maxval)
-# plot_fmap(lons, lats, counts1, typ, season=True, year=season, zoom=False, conv=True, save=True, addname="CT1", maxval=maxval)
+# plot_fmap(lons, lats, counts1, typ, season=True, year=season, zoom=False, conv=True, save=True, addname="SDT1", maxval=maxval)
+# plot_fmap(lons, lats, counts2, typ, season=True, year=season, zoom=False, conv=True, save=True, addname="SDT2", maxval=maxval)
+# plot_fmap(lons, lats, counts1, typ, season=True, year=season, zoom=True, conv=True, save=True, addname="SDT1", maxval=maxval)
+# plot_fmap(lons, lats, counts2, typ, season=True, year=season, zoom=True, conv=True, save=True, addname="SDT2", maxval=maxval)
 
 # for season in years:
     

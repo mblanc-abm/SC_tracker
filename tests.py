@@ -55,10 +55,11 @@ def plot_vortex_rain_masks(lons, lats, labeled_vx, cmap_vx, levels_vx, ticks_vx,
 
 #================================================================================================================================
 #inputs
-dtstr = "20170801210000" # to be filled: full date and time of timeshot
+dtstr = "20170801180000" # to be filled: full date and time of timeshot
 dt = pd.to_datetime(dtstr, format="%Y%m%d%H%M%S")
 aura = 1
 zeta_th = 4e-3
+zeta_pk = 6e-3
 w_th = 6
 min_area = 3
 
@@ -106,10 +107,10 @@ colors = [cmap_mask(i % 20) for i in range(20*int(np.ceil(ncells/20)))]
 cmap_mask = ListedColormap(colors)
 
 # search and label vortices, and find overlaps
-labeled_pos = label_above_thresholds(zeta_4lev, w_4lev, zeta_th, w_th, min_area, aura, "positive")
-labeled_neg = label_above_thresholds(zeta_4lev, w_4lev, zeta_th, w_th, min_area, aura, "negative")
-overlaps_pos, no_overlaps_pos = find_vortex_rain_overlaps(zeta_4lev, w_4lev, labeled_pos, mask, zeta_th, w_th)
-overlaps_neg, no_overlaps_neg = find_vortex_rain_overlaps(zeta_4lev, w_4lev, labeled_neg, mask, zeta_th, w_th)
+labeled_pos = label_above_thresholds(zeta_4lev, w_4lev, zeta_th, zeta_pk, w_th, min_area, aura, 1)
+labeled_neg = label_above_thresholds(zeta_4lev, w_4lev, zeta_th, zeta_pk, w_th, min_area, aura, -1)
+overlaps_pos, no_overlaps_pos = find_vortex_rain_overlaps(zeta_4lev, w_4lev, labeled_pos, mask, zeta_th, w_th, 1)
+overlaps_neg, no_overlaps_neg = find_vortex_rain_overlaps(zeta_4lev, w_4lev, labeled_neg, mask, zeta_th, w_th, -1)
 labeled_pos = np.where(labeled_pos == 0, np.nan, labeled_pos)
 labeled_neg = np.where(labeled_neg == 0, np.nan, labeled_neg)
 overlaps = merge_dictionaries(overlaps_pos, overlaps_neg)

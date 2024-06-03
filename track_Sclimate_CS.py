@@ -29,7 +29,7 @@ from Scell_tracker import track_Scells, write_to_json, write_masks_to_netcdf
 
 #====================================================================================================================
 
-def main(outpath, day, hours, zeta_th, w_th, min_area=3, aura=1):
+def main(outpath, day, hours, zeta_th, w_th, zeta_pk=None, two_meso_detections=False, min_area=3, aura=1):
 
     # make output directory
     os.makedirs(outpath, exist_ok=True)
@@ -68,7 +68,7 @@ def main(outpath, day, hours, zeta_th, w_th, min_area=3, aura=1):
     # track supercells
     print("tracking supercells")
     supercells, na_vorticies, lons, lats = track_Scells(day_obj, timesteps, fnames_p, fnames_s, path_h, rain_masks_name,
-                                                        rain_tracks_name, zeta_th, w_th, min_area, aura, CS=True)
+                                                        rain_tracks_name, zeta_th, zeta_pk, w_th, min_area, aura, two_meso_detections, CS=True)
     
     #write data to output files
     print("writing data to file")
@@ -84,19 +84,19 @@ def main(outpath, day, hours, zeta_th, w_th, min_area=3, aura=1):
 #====================================================================================================================
 ## all case studies in a row, several thresholds testing ##
 
-outpath = "/scratch/snx3000/mblanc/SDT/SDT2_output/current_climate/CaseStudies"
+outpath = "/scratch/snx3000/mblanc/SDT/SDT2_output/current_climate/CaseStudies/PT_2MD"
 CS_days = ['20120630', '20130727', '20130729', '20140625', '20170801', '20190610', '20190611', '20190613', '20190614',
             '20190820', '20210620', '20210628', '20210629', '20210708', '20210712', '20210713']
 CS_ranges = [np.arange(14,24), np.arange(14,23), np.arange(7,16), np.arange(10,17), np.arange(18,24), np.arange(16,21),
               np.arange(9,17), np.arange(17,20), np.arange(18,24), np.arange(13,22), np.arange(13,19), np.arange(10,22),
               np.arange(11,21), np.arange(13,17), np.arange(17,20), np.arange(11,16)]
-zeta_ths = np.array([4,5,6])*1e-3
-w_ths = [5,6,7]
+zeta_th = 4e-3
+zeta_pk = 6e-3
+w_th = 6
+two_meso_detections = True
 
-for zeta_th in zeta_ths:
-    for w_th in w_ths:
-        for i, day in enumerate(CS_days):
-            main(outpath, day, CS_ranges[i], zeta_th, w_th)
+for day, hours in zip(CS_days, CS_ranges):
+    main(outpath, day, hours, zeta_th, w_th, zeta_pk, two_meso_detections)      
 
 #====================================================================================================================
 ## one single day, single threshold pair

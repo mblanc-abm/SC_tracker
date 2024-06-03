@@ -21,7 +21,8 @@ from CaseStudies import zeta_plev
 
 #=======================================================================================================================================
 
-def track_Scells(day, timesteps, fnames_p, fnames_s, path_h, rain_masks_name, rain_tracks_name, zeta_th, w_th, min_area, aura, CS=False):
+def track_Scells(day, timesteps, fnames_p, fnames_s, path_h, rain_masks_name, rain_tracks_name, zeta_th, zeta_pk, w_th, min_area,
+                 aura, two_meso_detections, CS=False):
     """
     Main function managing mesocyclone detection and meso-rain association.
 
@@ -55,6 +56,8 @@ def track_Scells(day, timesteps, fnames_p, fnames_s, path_h, rain_masks_name, ra
     CS : bool
         if running on a case study where domain is cropped into a subdomain, hourly 2D surface files contain only surface pressure and
         not 10m max wind speed -> the latter variable will therefore not be considered
+    zeta_pk : None or float
+        vorticity peak threshold for each pressure level, default is None
     
     Returns
     -------
@@ -145,8 +148,8 @@ def track_Scells(day, timesteps, fnames_p, fnames_s, path_h, rain_masks_name, ra
             raise IndexError("Wind fields and rain masks have different shapes.")
         
         # discriminate between positively and negatively signed vorticies; label mesocyclone canditates with 2D masks
-        labeled_pos = label_above_thresholds(zeta_4lev, w_4lev, zeta_th, w_th, min_area, aura, "positive")
-        labeled_neg = label_above_thresholds(zeta_4lev, w_4lev, zeta_th, w_th, min_area, aura, "negative")
+        labeled_pos = label_above_thresholds(zeta_4lev, w_4lev, zeta_th, zeta_pk, w_th, min_area, aura, 1)
+        labeled_neg = label_above_thresholds(zeta_4lev, w_4lev, zeta_th, zeta_pk, w_th, min_area, aura, -1)
         
         # find overlaps between mesocyclone canditates and rain cells, assign the mesocyclones to cells, store the other vorticies
         overlaps_pos, no_overlaps_pos = find_vortex_rain_overlaps(zeta_4lev, w_4lev, labeled_pos, rain_masks_hourly[i], zeta_th, w_th, 1)
@@ -186,12 +189,12 @@ def track_Scells(day, timesteps, fnames_p, fnames_s, path_h, rain_masks_name, ra
                 index = active_cells_ids.index(rain_cell_id)
                 active_cells[index].append_candidate(nowdate, overlaps['signature'][j], overlaps['area'][j], float(overlaps['max_zeta'][j]),
                                                      float(overlaps['mean_zeta'][j]), float(overlaps['max_w'][j]), float(overlaps['mean_w'][j]),
-                                                     round(meso_max_hail,1), coords, round(cent_lon,3), round(cent_lat,3), overlap, sub_ids, sub_overlaps)
+                                                     np.round(meso_max_hail,1), coords, np.round(cent_lon,3), np.round(cent_lat,3), overlap, sub_ids, sub_overlaps)
             else:
                 active_cells_ids.append(rain_cell_id)
                 new_SC = SuperCell(rain_cell_id, nowdate, overlaps['signature'][j], overlaps['area'][j], float(overlaps['max_zeta'][j]),
                                    float(overlaps['mean_zeta'][j]), float(overlaps['max_w'][j]), float(overlaps['mean_w'][j]),
-                                   meso_max_hail, coords, round(cent_lon,3), round(cent_lat,3), overlap, sub_ids, sub_overlaps)
+                                   np.round(meso_max_hail,1), coords, np.round(cent_lon,3), np.round(cent_lat,3), overlap, sub_ids, sub_overlaps)
                 active_cells.append(new_SC)
         
         for j, sgn in enumerate(no_overlaps["signature"]): # loop over not assigned vorticies
@@ -205,18 +208,18 @@ def track_Scells(day, timesteps, fnames_p, fnames_s, path_h, rain_masks_name, ra
             vx_max_hail = float(np.nanmax(current_hail_field[coords[:,0], coords[:,1]]))
             
             na_vorticies.append(NA_Vortex(nowdate, sgn, no_overlaps['area'][j], float(no_overlaps['max_zeta'][j]), float(no_overlaps['mean_zeta'][j]),
-                                          float(no_overlaps['max_w'][j]), float(no_overlaps['mean_w'][j]), round(vx_max_hail,1), coords,
-                                          round(cent_lon,3), round(cent_lat,3)))
+                                          float(no_overlaps['max_w'][j]), float(no_overlaps['mean_w'][j]), np.round(vx_max_hail,1), coords,
+                                          np.round(cent_lon,3), np.round(cent_lat,3)))
             
     
     # include the rain cells attributes (datelist, centroid coordinates, max rain, max hail and max surface wind) to the supercells
     for i, ID in enumerate(active_cells_ids):
         # extract cell centroid lon/lat coordinates, datelist and max rain rate values from rain tracks
         cell_tracks = rain_tracks[ID]
-        cell_lon = [round(x,3) for x in cell_tracks['lon']]
-        cell_lat = [round(x,3) for x in cell_tracks['lat']]
+        cell_lon = [np.round(x,3) for x in cell_tracks['lon']]
+        cell_lat = [np.round(x,3) for x in cell_tracks['lat']]
         cell_datelist = pd.to_datetime(cell_tracks['datelist'])
-        cell_max_rain = [round(el*12,1) for el in cell_tracks['max_val']] # conversion of rain rate in mm/h and round
+        cell_max_rain = [np.round(el*12,1) for el in cell_tracks['max_val']] # conversion of rain rate in mm/h and round
         
         # determine maximum hail diameter within the rain cell for each 5min-timestep in cell lifetime
         if not determine_cell_max_hail:
@@ -231,7 +234,7 @@ def track_Scells(day, timesteps, fnames_p, fnames_s, path_h, rain_masks_name, ra
                 hail_values = hail_field[rain_masks_for_hail[k] == ID]
                 # during some merging/splitting processes, the cell changes its id, making it undetectable on the rain masks ...
                 if len(hail_values) > 0: 
-                    cell_max_hail.append(round(float(np.max(hail_values)), 1))
+                    cell_max_hail.append(np.round(float(np.max(hail_values)), 1))
                 else:
                     cell_max_hail.append(np.nan)
         
@@ -249,7 +252,7 @@ def track_Scells(day, timesteps, fnames_p, fnames_s, path_h, rain_masks_name, ra
                 wind_values = max_wind[rain_masks_for_wind[j] == ID]
                 # during some merging/splitting processes, the cell changes its id, making it undetectable on the rain masks ...
                 if len(wind_values) > 0:
-                    cell_max_wind.append(round(float(np.max(wind_values)), 1))
+                    cell_max_wind.append(np.round(float(np.max(wind_values)), 1))
                 else:
                     cell_max_wind.append(np.nan)
         
@@ -259,11 +262,15 @@ def track_Scells(day, timesteps, fnames_p, fnames_s, path_h, rain_masks_name, ra
     # determine the minimum mesocyclone lifespan
     _ = [cell.post_processing() for cell in active_cells]
     
+    # if two meso detections are requested, filter out supercells with unique meso detection
+    if two_meso_detections:
+        active_cells = [cell for cell in active_cells if (len(cell.meso_datelist) > 1)]
+    
     return active_cells, na_vorticies, lons, lats
 
 
 
-def label_above_thresholds(zeta_4lev, w_4lev, zeta_th, w_th, min_area, aura, sgn):
+def label_above_thresholds(zeta_4lev, w_4lev, zeta_th, zeta_pk, w_th, min_area, aura, sgn):
     """
     Labels above-thresholds and sufficiently large areas.
     Finds cohesive coincident vorticity and updraught velocity regions above the respective thresholds on the three levels
@@ -272,25 +279,19 @@ def label_above_thresholds(zeta_4lev, w_4lev, zeta_th, w_th, min_area, aura, sgn
     in
     zeta_4lev : 2D vorticity field on the 4 pressure levels, 3D array
     w_4lev : 2D updraught velocity field on the 4 pressure levels, 3D array
-    zeta_th : vorticity threshold value considered as within cell, float
+    zeta_th : vorticity threshold value considered for all pixels within cell, float
+    zeta_pk : vorticity peak threshold value within cell, default is None (no peak criterion), float
     w_th : updraught velocity threshold value considered as within cell, float
     min_area: minimum horizontal area threshold for each pressure level in grid point, int
     aura : number of gridpoints to dilate labels, dilation intervenes after min_area criterion is invoked, int
-    sgn : signature of the vorticies, ie "positive" or "negative", str
+    sgn : signature of the vorticies, either 1 (positive) or -1 (negative), int
 
     out
     footprint : 2D vorticies footprints labeled with unique labels, starting from 1, 2D array
     """
     
-    # check which vorticity signature is wanted and mask above-zeta-threshold regions on each level
-    if sgn == "positive":
-        zeta_above_threshold = zeta_4lev >= zeta_th
-    elif sgn == "negative":
-        zeta_above_threshold = zeta_4lev <= -zeta_th
-    else:
-        raise NameError("Vorticity signature wrongly specified: either positive or negative")
-    
-    # mask above-w-threshold regions and apply duo-threshold criterion on each level
+    # mask above-zeta-threshold regions, above-w-threshold regions and apply duo-threshold criterion on each level
+    zeta_above_threshold = sgn*zeta_4lev >= zeta_th
     w_above_threshold = w_4lev >= w_th
     above_thresholds = np.logical_and(zeta_above_threshold, w_above_threshold)
     
@@ -302,7 +303,13 @@ def label_above_thresholds(zeta_4lev, w_4lev, zeta_th, w_th, min_area, aura, sgn
         labels, counts = np.unique(lbd, return_counts=True)
         labels, counts = labels[1:], counts[1:]  # remove zero, corresponding to the background
         for label, count in zip(labels, counts):
-            if count < min_area:
+            if zeta_pk:
+                zeta_vals = zeta_4lev[i][lbd == label]
+                zeta_max = np.max(np.abs(zeta_vals))
+                peak_th_crit = zeta_max >= zeta_pk
+            else:
+                peak_th_crit = True
+            if count < min_area or not peak_th_crit:
                 lbd[lbd == label] = 0
         lbd = expand_labels(lbd, distance=aura) # dilates label to counteract vortex tilting with height
         labeled.append(lbd)
@@ -390,14 +397,14 @@ def find_vortex_rain_overlaps(zeta_4lev, w_4lev, labeled, rain_mask, zeta_th, w_
                 zeta_values.extend(zeta_val_lev)
                 w_values.extend(w_val_lev)
         
-        mean_zeta = round(np.mean(zeta_values), 5)
+        mean_zeta = np.round(np.mean(zeta_values), 5)
         #sgn = np.sign(mean_zeta).astype(int)
         #mean_zeta = "{:.2e}".format(mean_zeta)
         max_zeta = np.max(np.abs(zeta_values))
-        max_zeta = round(sgn*max_zeta, 5)
+        max_zeta = np.round(sgn*max_zeta, 5)
         #max_zeta = "{:.2e}".format(max_zeta)
-        mean_w = round(np.mean(w_values), 1)
-        max_w = round(np.max(w_values), 1)
+        mean_w = np.round(np.mean(w_values), 1)
+        max_w = np.round(np.max(w_values), 1)
         area = len(coordinates) # np.count_nonzero(labeled == VX_label)
                 
         # if the current SC overlaps with an unique rain cell, append the corresponding cell id and overlap area

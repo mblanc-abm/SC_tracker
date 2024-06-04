@@ -46,18 +46,21 @@ def track_Scells(day, timesteps, fnames_p, fnames_s, path_h, rain_masks_name, ra
     rain_tracks_name : str
         path to the output json file of the cell tracker algorithm 
     zeta_th : float
-        vorticity threshold for each pressure level
+        vorticity threshold that all pixel must satisfy, for each pressure level
+    zeta_pk : None or float
+        vorticity peak threshold for each pressure level, default is None (no peak criterion)
     w_th : float
         updraught velocity threshold for each pressure level
     min_area : int
         minimum horizontal area threshold for each pressure level in grid point
     aura : int
         number of gridpoints to dilate labels, supercell post-dilation intervenes after min_area criterion is invoked
+    two_meso_detections : bool
+        option to require a minimum of 2 mesocyclone detections at different time steps during supercell lifetime
     CS : bool
         if running on a case study where domain is cropped into a subdomain, hourly 2D surface files contain only surface pressure and
         not 10m max wind speed -> the latter variable will therefore not be considered
-    zeta_pk : None or float
-        vorticity peak threshold for each pressure level, default is None
+    
     
     Returns
     -------

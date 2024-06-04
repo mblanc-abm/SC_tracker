@@ -17,7 +17,7 @@ output:
 from Scell_tracker import track_Scells, write_to_json, write_masks_to_netcdf
 #import sys
 import os
-#import argparse
+import argparse
 
 import xarray as xr
 import pandas as pd
@@ -25,7 +25,8 @@ import pandas as pd
 
 #====================================================================================================================
 
-def main(climate, start_day, end_day, zeta_th=4e-3, w_th=6, min_area=3, aura=1):
+# set the thresholds as default arguments before any domain simulation ! Also specify the output path further down !
+def main(climate, start_day, end_day, zeta_th=5e-3, zeta_pk=None, w_th=5, two_meso_detections=False, min_area=3, aura=1):
     
     start_day = pd.to_datetime(start_day, format="%Y%m%d")
     end_day = pd.to_datetime(end_day, format="%Y%m%d")
@@ -38,7 +39,7 @@ def main(climate, start_day, end_day, zeta_th=4e-3, w_th=6, min_area=3, aura=1):
     path_h = os.path.join(inpath, "5min_2D")
 
     # make output directory
-    outpath = "/scratch/snx3000/mblanc/SDT/SDT2_output/" + climate + "/domain"
+    outpath = "/scratch/snx3000/mblanc/SDT/SDT2_output/" + climate + "/domain/XPT_1MD_zetath5_wth5"
     os.makedirs(outpath, exist_ok=True)
     
     for i, day in enumerate(daylist):
@@ -69,7 +70,7 @@ def main(climate, start_day, end_day, zeta_th=4e-3, w_th=6, min_area=3, aura=1):
         # track supercells
         print("tracking supercells")
         supercells, na_vorticies, lons, lats = track_Scells(day, timesteps, fnames_p, fnames_s, path_h, rain_masks_name, rain_tracks_name, zeta_th,
-                                                            w_th, min_area, aura)
+                                                            zeta_pk, w_th, min_area, aura, two_meso_detections)
         
         print("writing data to file")
         outfile_json = os.path.join(outpath, "supercell_" + day.strftime("%Y%m%d") + ".json")
@@ -83,17 +84,17 @@ def main(climate, start_day, end_day, zeta_th=4e-3, w_th=6, min_area=3, aura=1):
 
 #====================================================================================================================
 
-climate = "current_climate"
-start_day = "20120630"
-end_day = "20120630"
+# climate = "current_climate"
+# start_day = "20120630"
+# end_day = "20120630"
 
-main(climate, start_day, end_day)
+# main(climate, start_day, end_day)
 
-# if __name__ == "__main__":
-#     p = argparse.ArgumentParser()
-#     p.add_argument("climate", type=str, help="climate")
-#     p.add_argument("start_day", type=str, help="start day")
-#     p.add_argument("end_day", type=str, help="end day")
-#     args = p.parse_args()
+if __name__ == "__main__":
+    p = argparse.ArgumentParser()
+    p.add_argument("climate", type=str, help="climate")
+    p.add_argument("start_day", type=str, help="start day")
+    p.add_argument("end_day", type=str, help="end day")
+    args = p.parse_args()
 
-#     main(**vars(args))
+    main(**vars(args))

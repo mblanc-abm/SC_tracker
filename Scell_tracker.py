@@ -262,9 +262,9 @@ def track_Scells(day, timesteps, fnames_p, fnames_s, path_h, rain_masks_name, ra
     # determine the minimum mesocyclone lifespan
     _ = [cell.post_processing() for cell in active_cells]
     
-    # if two meso detections are requested, filter out supercells with unique meso detection
+    # if two meso detections (at different time steps) are requested, filter out supercells with unique meso detection
     if two_meso_detections:
-        active_cells = [cell for cell in active_cells if (len(cell.meso_datelist) > 1)]
+        active_cells = [cell for cell in active_cells if (len(np.unique(cell.meso_datelist)) > 1)]
     
     return active_cells, na_vorticies, lons, lats
 

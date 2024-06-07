@@ -9,14 +9,14 @@ import cartopy.feature as cfeature
 from scipy.signal import convolve2d
 from skimage.morphology import disk, dilation
 import argparse
-from matplotlib.colors import TwoSlopeNorm
+from matplotlib.colors import TwoSlopeNorm, BoundaryNorm
 from matplotlib import gridspec
 #from sklearn.neighbors import KernelDensity
 
 #==================================================================================================================================================
 # FUNCTIONS
 #==================================================================================================================================================
-def plot_fmap(lons, lats, fmap, typ, season=False, year=None, zoom=False, filtering=False, conv=True, save=False, iuh_thresh=None, addname="", maxval=None):
+def plot_fmap(lons, lats, fmap, typ, r_disk, season=False, year=None, zoom=False, save=False, addname=""):
     """
     Plots the desired decadal (default) or seasonal frequency map and saves the figure
     for the decadal maps expressed in anual average, directly provide the annually averaged counts in input
@@ -32,29 +32,35 @@ def plot_fmap(lons, lats, fmap, typ, season=False, year=None, zoom=False, filter
         filtering and convolution/dilation processes are assumed to be beforehand handled, ie fmap ready to be plotted
     typ: str
         type of the frequency map, eg "supercell", "rain", "mesocyclone"
+    r_disk : int
+        radius of the disk footprint in grid point
     season : bool
         True for a seasonal frequency map, False for the decadal period. The default is False.
     year : str or None
         if seasonal, year YYYY of the season. Elsewise, None. The default is None.
     zoom : bool, optional
         False: smart cut of whole domain (ocean and Northern Africa discarded) ; True: zoom on the Alps. The default is False.
-    filtering : bool
-        for "supercell" type, filters out the mask patches associated with the cells whose max rain rate does not reach the thr+prom = 13.7 mm/h criterion
     conv : bool
         False: number of storms per grid box, ie per 4.84 km^2; True: 4-connectivity sum convolution yields the number of storms per 24.2 km^2
         caution: handling of dilation/convolution is performed beforehand, not in this plotting function
-    iuh_thresh: float
-        option to filter out supercell tracks whose mesocyclone peak intensity is weaker than iuh_thresh; default if None, equivalent to 75 m^2/s^2
-        displayed in the figure title and name
     addname: str
         option to add additional information to figure name and title
-    maxval: float
-        option to set a maximum frequency value displayed by the colorbar, for comparison purposes
 
     Returns
     -------
     Plots the desired frequency map and saves it.
     """
+    
+    # mask the 0 values
+    fmap = np.array(fmap.astype(float))
+    fmap[fmap<1] = np.nan
+    
+    # set the norm
+    bounds = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+    norm = BoundaryNorm(boundaries=bounds, ncolors=256, extend='max') 
+    
+    # determine the area of influence based on the footprint
+    aoi = np.count_nonzero(disk(r_disk))*4.84
         
     # load geographic features
     resol = '10m'  # use data at this scale
@@ -72,11 +78,13 @@ def plot_fmap(lons, lats, fmap, typ, season=False, year=None, zoom=False, filter
     ax.add_feature(coastline, linestyle='-', edgecolor='k', linewidth=0.2)
     
     if season:
-        figname = "season" + year + "_" + typ
+        figname = "season" + year + "_" + typ + "_disk" + str(r_disk)
         title = "Season " + year + " " + typ + " distribution map"
+        lab = r"number of " + typ + "s per " + str(aoi) + " $km^2$"
     else:
-        figname = "decadal_" + typ
+        figname = "decadal_" + typ + typ + "_disk" + str(r_disk)
         title = "Decadal " + typ + " distribution map"
+        lab = r"number of " + typ + "s per year per " + str(aoi) + " $km^2$"
     
     if zoom:
         zl, zr, zb, zt = 750, 400, 570, 700 #cut for Alpine region
@@ -85,30 +93,14 @@ def plot_fmap(lons, lats, fmap, typ, season=False, year=None, zoom=False, filter
     else:
         zl, zr, zb, zt = 180, 25, 195, 25 #smart cut for entire domain
         cbar_orientation = "vertical"
-    
-    if maxval:
-        cont = ax.pcolormesh(lons[zb:-zt,zl:-zr], lats[zb:-zt,zl:-zr], fmap[zb:-zt,zl:-zr], vmin=0, vmax=maxval, cmap="Reds", transform=ccrs.PlateCarree())
-    else:
-        cont = ax.pcolormesh(lons[zb:-zt,zl:-zr], lats[zb:-zt,zl:-zr], fmap[zb:-zt,zl:-zr], cmap="Reds", transform=ccrs.PlateCarree())
-    
-    if filtering:
-        figname += "_filtered"
-    if conv:
-        figname += "_conv"
-        lab = r"number of " + typ + "s per 24.2 $km^2$"
-    else:
-        lab = r"number of " + typ + "s per 4.84 $km^2$"
-    if iuh_thresh:
-        figname += "_iuhpt" + str(round(iuh_thresh))
+
+    cont = ax.pcolormesh(lons[zb:-zt,zl:-zr], lats[zb:-zt,zl:-zr], fmap[zb:-zt,zl:-zr], norm=norm, cmap="Reds", transform=ccrs.PlateCarree())
     
     if addname:
         figname += "_" + addname + ".png"
         title += ", " + addname
     
     plt.colorbar(cont, orientation=cbar_orientation, label=lab)
-    
-    if iuh_thresh:
-        title += ", iuh thresh = " + str(round(iuh_thresh))
         
     plt.title(title)
     
@@ -767,7 +759,7 @@ def supercell_tracks_model_obs_comp_2016_2021_fmaps(conv=True, save=False):
 
 # compare different versions
 
-# season = "2021"
+# season = "2019"
 # #years = ["2011", "2012", "2013", "2014", "2015", "2016", "2017", "2018", "2019", "2020", "2021"]
 # method = "model_tracks"
 # typ = "supercell"
@@ -783,14 +775,12 @@ def supercell_tracks_model_obs_comp_2016_2021_fmaps(conv=True, save=False):
 # with xr.open_dataset("/scratch/snx3000/mblanc/fmaps_data/SDT2/" + method + "/SC_season" + season + "_disk2_zetath5_wth5.nc") as dset:
 #     counts3 = dset['frequency_map']
 
-# maxval = np.max((np.max(counts1), np.max(counts2), np.max(counts3)))
-
-# plot_fmap(lons, lats, counts1, typ, season=True, year=season, zoom=False, conv=True, save=True, addname="SDT1", maxval=maxval)
-# plot_fmap(lons, lats, counts2, typ, season=True, year=season, zoom=False, conv=True, save=True, addname="SDT2_4_6", maxval=maxval)
-# plot_fmap(lons, lats, counts3, typ, season=True, year=season, zoom=False, conv=True, save=True, addname="SDT2_5_5", maxval=maxval)
-# plot_fmap(lons, lats, counts1, typ, season=True, year=season, zoom=True, conv=True, save=True, addname="SDT1", maxval=maxval)
-# plot_fmap(lons, lats, counts2, typ, season=True, year=season, zoom=True, conv=True, save=True, addname="SDT2_4_6", maxval=maxval)
-# plot_fmap(lons, lats, counts3, typ, season=True, year=season, zoom=True, conv=True, save=True, addname="SDT2_5_5", maxval=maxval)
+# plot_fmap(lons, lats, counts1, typ, 2, season=True, year=season, zoom=False, save=True, addname="SDT1")
+# plot_fmap(lons, lats, counts2, typ, 2, season=True, year=season, zoom=False, save=True, addname="SDT2_4_6")
+# plot_fmap(lons, lats, counts3, typ, 2, season=True, year=season, zoom=False, save=True, addname="SDT2_5_5")
+# plot_fmap(lons, lats, counts1, typ, 2, season=True, year=season, zoom=True, save=True, addname="SDT1")
+# plot_fmap(lons, lats, counts2, typ, 2, season=True, year=season, zoom=True, save=True, addname="SDT2_4_6")
+# plot_fmap(lons, lats, counts3, typ, 2, season=True, year=season, zoom=True, save=True, addname="SDT2_5_5")
 
 # for season in years:
     

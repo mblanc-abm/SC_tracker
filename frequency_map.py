@@ -415,26 +415,16 @@ def seasonal_supercell_tracks_obs_fmap(start_day, end_day, conv=True):
     return lons, lats, counts
 
 
-def seasonal_masks_fmap(season, typ, climate, resolve_ovl=True, filtering=True, skipped_days=None, conv=True):
+def seasonal_meso_masks_model_fmap(season, path):
     """
-    Computes the seasonal frequency map using masks method over the model whole domain
+    Computes the seasonal mesocyclone frequency map using masks method over the model domain
     
     Parameters
     ----------
     season : str
         considered season, YYYY
-    typ : str
-        type of the frequency map, eg "supercell", "rain", "mesocyclone"
-    climate : str
-        "current" or "future", depending on the climate you are analising
-    resolve_ovl : bool
-        for "rain" and "supercell" types, discards single cell overlaps
-    filtering : bool
-        for "supercell" type, filters out the mask patches associated with the cells whose max rain rate does not reach the thr+prom = 13.7 mm/h criterion
-    skipped_days : list of str
-        list of missing days which consequently must be skipped
-    conv : bool, for mesocyclone only (rain cells sufficiently widespread + significant computational cost)
-        False: number of storms per grid box, ie per 4.84 km^2; True: 4-connectivity sum convolution yields the number of storms per 24.2 km^2
+    path : str
+        path to the mesocyclone masks, SDT2 outputs
 
     Returns
     -------
@@ -450,129 +440,22 @@ def seasonal_masks_fmap(season, typ, climate, resolve_ovl=True, filtering=True, 
     end_day = pd.to_datetime(season + "0930")
     daylist = pd.date_range(start_day, end_day)
     
-    # remove skipped days from daylist
-    if skipped_days:
-        skipped_days = pd.to_datetime(skipped_days, format="%Y%m%d")
-        daylist = [day for day in daylist if day not in skipped_days]
+    meso_masks_files = []
+    for day in daylist:
+        meso_masks_files.append(path + "/meso_masks_" + day.strftime("%Y%m%d") + ".nc")
     
-    if typ == "rain" or typ == "supercell":
+    for i, meso_masks_file in enumerate(meso_masks_files):
         
-        SC_path = "/scratch/snx3000/mblanc/SDT_output/seasons/" + season + "/"
-        mask_path = "/scratch/snx3000/mblanc/cell_tracker_output/" + climate + "_climate/"
-
-        SC_files = []
-        mask_files = []
-        for day in daylist:
-            SC_files.append(SC_path + "supercell_" + day.strftime("%Y%m%d") + ".json")
-            mask_files.append(mask_path + "cell_masks_" + day.strftime("%Y%m%d") + ".nc")
-
-        for i in range(len(mask_files)):
-            
-            # rain masks
-            with xr.open_dataset(mask_files[i]) as dset:
-                rain_masks = dset['cell_mask'] # 3D matrix
-                if i == 0:
-                    lons = dset["lon"].values
-                    lats = dset["lat"].values
-             
-            if typ == "supercell":
-                # SC info -> extract cell ids corresponding to supercells
-                with open(SC_files[i], "r") as read_file:
-                    SC_info = json.load(read_file)['supercell_data']
-                SC_ids = [SC['rain_cell_id'] for SC in SC_info]
-                                
-                if filtering: # prepare and convert the rain masks datelist to the cells datelist format, ie YYYY-mm-dd HH:mm (remove seconds)
-                    rain_masks_times = pd.to_datetime([str(t)[:16] for t in np.array(rain_masks['time'])]) # otherwise may be mismatches                    
-                
-                rain_masks = np.where(np.isin(rain_masks, SC_ids), rain_masks, np.nan) # discard cells that are not supercells. This line incidentally drops the time coord values
-                
-                # filter out the mask patches associated with the insufficiently precipitating cells
-                if filtering:
-                    for SC in SC_info:
-                        indices = np.array(SC['cell_max_rain']) < 13.7 # select the indices of the track that must be droped
-                        if any(indices): # if supercell SC has at leat one mask to discard throughout its lifetime
-                            ID = SC['rain_cell_id']
-                            times_to_drop = pd.to_datetime(np.array(SC['cell_datelist'])[indices]) # extract the times at which it occurs
-                            # finally discard the masks of the cell in question at the previously selected time slices
-                            rain_masks[np.isin(rain_masks_times, times_to_drop)] = np.where(rain_masks[np.isin(rain_masks_times, times_to_drop)]==ID, np.nan, rain_masks[np.isin(rain_masks_times, times_to_drop)])
-            
-            if resolve_ovl:
-                if i == 0:
-                    counts = resolve_overlaps(rain_masks)
-                else:
-                    counts += resolve_overlaps(rain_masks)
-            else:
-                bin_masks = np.logical_not(np.isnan(rain_masks))
-                if i == 0:
-                    counts = np.count_nonzero(bin_masks, axis=0)
-                else:
-                    counts += np.count_nonzero(bin_masks, axis=0)
-            
-                
-    elif typ == "mesocyclone":
-        
-        meso_path = "/scratch/snx3000/mblanc/SDT_output/seasons/" + season + "/"
-        meso_masks_files = []
-        for day in daylist:
-            meso_masks_files.append(meso_path + "meso_masks_" + day.strftime("%Y%m%d") + ".nc")
-        
-        for i, meso_masks_file in enumerate(meso_masks_files):
-            
-            with xr.open_dataset(meso_masks_file) as dset:
-                meso_masks = dset['meso_mask']
-                if i == 0:
-                    lons = dset["lon"].values
-                    lats = dset["lat"].values
-            
-            if conv:
-                for j in range(len(meso_masks)):
-                    meso_masks[j] = dilation(meso_masks[j], disk(1)) # 4-connectivity dilation -> avoids meso overlaps with themselves
-            
+        with xr.open_dataset(meso_masks_file) as dset:
+            meso_masks = dset['meso_mask']
             if i == 0:
-                counts = np.count_nonzero(meso_masks, axis=0)
-            else:
-                counts += np.count_nonzero(meso_masks, axis=0)
-    
-    else:
-        print("error: type is not part of the three compatible ones: supercell, rain or mesocyclone")
-        return
-    
-    return lons, lats, counts
-
-
-def decadal_masks_fmap(typ, climate, resolve_ovl=False, skipped_days=None):
-    """
-    Computes the decadal frequency map over whole domain
-    
-    Parameters
-    ----------
-    typ: str
-        type of the frequency map, eg "supercell", "rain", "mesocyclone"
-    climate : str
-        "current" or "future", depending on the climate you are analising
-
-    Returns
-    -------
-    lons : 2D array
-        longitude at each gridpoint
-    lats : 2D array
-        latitude at each gridpoint
-    counts : 2D array
-        the desired seasonal frequency map
-    """
-    if climate == "current":
-        years = ["2011", "2012", "2013", "2014", "2015", "2016", "2017", "2018", "2019", "2020", "2021"]
-    elif climate == "future":
-        years = ["2085", "2086", "2087", "2088", "2089", "2090", "2091", "2092", "2093", "2094", "2095"]
-    else:
-        print("error: climate wrongly specified !")
-    
-    for i, year in enumerate(years):
+                lons = dset["lon"].values
+                lats = dset["lat"].values
+        
         if i == 0:
-            lons, lats, counts = seasonal_masks_fmap(year, typ, climate, resolve_ovl, skipped_days)
+            counts = np.count_nonzero(meso_masks, axis=0)
         else:
-            _, _, counts2 = seasonal_masks_fmap(year, typ, climate, resolve_ovl, skipped_days)
-            counts += counts2
+            counts += np.count_nonzero(meso_masks, axis=0)
     
     return lons, lats, counts
 
@@ -712,18 +595,19 @@ def supercell_tracks_model_obs_comp_2016_2021_fmaps(conv=True, save=False):
 #args = parser.parse_args()
 
 # skipped_days = ['20120604', '20140923', '20150725', '20160927', '20170725']
-#climate = "current"
-#season = "2021" #args.season
-# years = ["2011", "2012", "2013", "2014", "2015", "2016", "2017", "2018", "2019", "2020", "2021"]
-#method = "model_tracks"
-## iuh_thresh = args.iuh_thresh#
-#path = "/scratch/snx3000/mblanc/SDT/SDT2_output/current_climate/domain/XPT_1MD_zetath5_wth5"
+climate = "current"
+#season = "2011" #args.season
+years = ["2011", "2012", "2013", "2014", "2015", "2016", "2017", "2018", "2019", "2020", "2021"]
+method = "model_masks"
+##iuh_thresh = args.iuh_thresh#
+path = "/scratch/snx3000/mblanc/SDT/SDT2_output/" + climate + "_climate/domain/XPT_1MD_zetath5_wth5/"
 
-# lons, lats, counts_meso = seasonal_masks_fmap(season, "mesocyclone", climate, skipped_days=skipped_days, conv=True)
-# plot_fmap(lons, lats, counts_meso, "mesocyclone", season=True, year=season, zoom=False, conv=True, save=True)
-# plot_fmap(lons, lats, counts_meso, "mesocyclone", season=True, year=season, zoom=True, conv=True, save=True)
-# filename_meso = "/scratch/snx3000/mblanc/fmaps_data/" + method + "/meso_season" + season + "_conv.nc"
-# write_to_netcdf(lons, lats, counts_meso, filename_meso)
+for season in years:
+    lons, lats, counts_meso = seasonal_meso_masks_model_fmap(season, path)
+    plot_fmap(lons, lats, counts_meso, "mesocyclone", r_disk=0, season=True, year=season, zoom=False, save=True, addname="")
+    plot_fmap(lons, lats, counts_meso, "mesocyclone", r_disk=0, season=True, year=season, zoom=False, save=True, addname="")
+    filename_meso = "/scratch/snx3000/mblanc/fmaps_data/SDT2/" + climate + "_climate/" + method + "/meso_season" + season + "_XPT_1MD_zetath5_wth5.nc"
+    write_to_netcdf(lons, lats, counts_meso, filename_meso)
 
 # lons, lats, counts_SC = seasonal_masks_fmap(season, "supercell", climate, resolve_ovl, filtering=filtering, skipped_days=skipped_days)
 # plot_fmap(lons, lats, counts_SC, "supercell", season=True, year=season, filtering=filtering, conv=True)

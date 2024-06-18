@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 import matplotlib.pyplot as plt
+from matplotlib.ticker import FuncFormatter
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 from scipy.signal import convolve2d
@@ -16,6 +17,7 @@ from matplotlib import gridspec
 #==================================================================================================================================================
 # FUNCTIONS
 #==================================================================================================================================================
+
 def plot_fmap(lons, lats, fmap, typ, r_disk, season=False, year=None, zoom=False, save=False, addname=""):
     """
     Plots the desired decadal (default) or seasonal frequency map and saves the figure
@@ -54,7 +56,7 @@ def plot_fmap(lons, lats, fmap, typ, r_disk, season=False, year=None, zoom=False
     if typ == "supercell" and season:
         # mask the 0 values
         fmap = np.array(fmap.astype(float))
-        fmap[fmap<0.01] = np.nan
+        fmap[fmap<0.001] = np.nan
         # set the norm
         bounds = [1, 2, 3, 4, 5, 6, 7]
         norm = BoundaryNorm(boundaries=bounds, ncolors=256, extend='max')
@@ -62,11 +64,13 @@ def plot_fmap(lons, lats, fmap, typ, r_disk, season=False, year=None, zoom=False
     elif typ == "supercell" and not season:
         # mask the 0 values
         fmap = np.array(fmap.astype(float))
-        fmap[fmap<0.01] = np.nan
+        fmap[fmap<0.001] = np.nan
         # set the norm
-        bounds = [0, 0.5, 1, 1.5, 2, 2.5, 3]
+        bounds = [1/11, 2/11, 4/11, 8/11, 1, 1.2, 1.4, 1.6, 1.8, 2]
+        bounds_str = ["1/11", "2/11", "4/11", "8/11", "1", "1.2", "1.4", "1.6", "1.8", "2"]
         norm = BoundaryNorm(boundaries=bounds, ncolors=256, extend='max')
-    
+        #norm = TwoSlopeNorm(vmin=0, vcenter=1, vmax=2)
+        
     elif typ == "mesocyclone":
         # mask the 0 values
         fmap = np.array(fmap.astype(float))
@@ -82,8 +86,12 @@ def plot_fmap(lons, lats, fmap, typ, r_disk, season=False, year=None, zoom=False
         
     # load geographic features
     resol = '10m'  # use data at this scale
-    bodr = cfeature.NaturalEarthFeature(category='cultural', name='admin_0_boundary_lines_land', scale=resol, facecolor='none', alpha=0.5)
-    coastline = cfeature.NaturalEarthFeature('physical', 'coastline', scale=resol, facecolor='none')
+    bodr = cfeature.NaturalEarthFeature(category='cultural', name='admin_0_boundary_lines_land', scale=resol,
+                                        facecolor='none', edgecolor='k', linestyle='-', alpha=1, linewidth=0.8)
+    coastline = cfeature.NaturalEarthFeature(category='physical', name='coastline', scale=resol, facecolor='none',
+                                             edgecolor='k', linestyle='-', alpha=1, linewidth=0.8)
+    lakes = cfeature.NaturalEarthFeature(category='physical', name='lakes', scale=resol, facecolor='none',
+                                         edgecolor='blue', linestyle='-', alpha=1, linewidth=0.8)
     rp = ccrs.RotatedPole(pole_longitude = -170, pole_latitude = 43)
     
     if zoom:
@@ -92,8 +100,8 @@ def plot_fmap(lons, lats, fmap, typ, r_disk, season=False, year=None, zoom=False
         fig = plt.figure(figsize=(10,8))
     
     ax = plt.axes(projection=rp)
-    ax.add_feature(bodr, linestyle='-', edgecolor='k', alpha=1, linewidth=0.2)
-    ax.add_feature(coastline, linestyle='-', edgecolor='k', linewidth=0.2)
+    ax.add_feature(bodr)
+    ax.add_feature(coastline)
     
     if season:
         figname = "season" + year + "_" + typ + "_disk" + str(r_disk)
@@ -108,17 +116,27 @@ def plot_fmap(lons, lats, fmap, typ, r_disk, season=False, year=None, zoom=False
         zl, zr, zb, zt = 750, 400, 570, 700 #cut for Alpine region
         figname += "_alps"
         cbar_orientation = "horizontal"
+        ax.add_feature(lakes)
     else:
         zl, zr, zb, zt = 180, 25, 195, 25 #smart cut for entire domain
         cbar_orientation = "vertical"
 
-    cont = ax.pcolormesh(lons[zb:-zt,zl:-zr], lats[zb:-zt,zl:-zr], fmap[zb:-zt,zl:-zr], norm=norm, cmap="Reds", transform=ccrs.PlateCarree())
+    cont = ax.pcolormesh(lons[zb:-zt,zl:-zr], lats[zb:-zt,zl:-zr], fmap[zb:-zt,zl:-zr], norm=norm, cmap="plasma", transform=ccrs.PlateCarree())
     
     if addname:
         figname += "_" + addname + ".png"
         title += ", " + addname
     
-    plt.colorbar(cont, orientation=cbar_orientation, label=lab)
+    cbar = plt.colorbar(cont, orientation=cbar_orientation, label=lab)
+    
+    if typ == "supercell" and not season:
+        def custom_formatter(x, pos):
+            if x in bounds:
+                index = bounds.index(x)
+                return bounds_str[index]
+            return str(x)
+        cbar.ax.yaxis.set_major_formatter(FuncFormatter(custom_formatter))
+        cbar.ax.xaxis.set_major_formatter(FuncFormatter(custom_formatter))
         
     plt.title(title)
     
@@ -595,7 +613,7 @@ def supercell_tracks_model_obs_comp_2016_2021_fmaps(conv=True, save=False):
 #==================================================================================================================================================
 # create data, plot and store them
 
-# model data ##
+## model data ##
 
 #parser = argparse.ArgumentParser()
 #parser.add_argument("season", type=str)
@@ -605,16 +623,18 @@ def supercell_tracks_model_obs_comp_2016_2021_fmaps(conv=True, save=False):
 climate = "current"
 # season = "2019" #args.season
 years = ["2011", "2012", "2013", "2014", "2015", "2016", "2017", "2018", "2019", "2020", "2021"]
+# years = ['2085', '2086', '2087', '2088', '2089', '2090', '2091', '2092', '2093', '2094', '2095']
 # #years = ["2019", "2020", "2021"]
 method = "model_tracks"
 # ##iuh_thresh = args.iuh_thresh#
 path = "/scratch/snx3000/mblanc/SDT/SDT2_output/" + climate + "_climate/domain/XPT_1MD_zetath5_wth5/"
+r_disk = 5
 
 # for season in years:
 #     lons, lats, counts_meso = seasonal_meso_masks_model_fmap(season, path)
-#     plot_fmap(lons, lats, counts_meso, "mesocyclone", r_disk=0, season=True, year=season, zoom=False, save=True, addname="_4_6")
-#     plot_fmap(lons, lats, counts_meso, "mesocyclone", r_disk=0, season=True, year=season, zoom=True, save=True, addname="_4_6")
-#     filename_meso = "/scratch/snx3000/mblanc/fmaps_data/SDT2/" + climate + "_climate/" + method + "/meso_season" + season + "_XPT_1MD_zetath4_wth6.nc"
+#     #plot_fmap(lons, lats, counts_meso, "mesocyclone", r_disk=0, season=True, year=season, zoom=False, save=True, addname="")
+#     #plot_fmap(lons, lats, counts_meso, "mesocyclone", r_disk=0, season=True, year=season, zoom=True, save=True, addname="")
+#     filename_meso = "/scratch/snx3000/mblanc/fmaps_data/SDT2/" + climate + "_climate/" + method + "/meso_season" + season + ".nc"
 #     write_to_netcdf(lons, lats, counts_meso, filename_meso)
 
 # lons, lats, counts_SC = seasonal_masks_fmap(season, "supercell", climate, resolve_ovl, filtering=filtering, skipped_days=skipped_days)
@@ -624,10 +644,10 @@ path = "/scratch/snx3000/mblanc/SDT/SDT2_output/" + climate + "_climate/domain/X
 # write_to_netcdf(lons, lats, counts_SC, filename_SC)
 
 for season in years:
-    lons, lats, counts_SC = seasonal_supercell_tracks_model_fmap(season, path, 2, twoMD=True)
-    plot_fmap(lons, lats, counts_SC, "supercell", r_disk=2, season=True, year=season, zoom=False, save=True, addname="5_5_2MD")
-    plot_fmap(lons, lats, counts_SC, "supercell", r_disk=2, season=True, year=season, zoom=True, save=True, addname="5_5_2MD")
-    filename_SC = "/scratch/snx3000/mblanc/fmaps_data/SDT2/" + climate + "_climate/" + method + "/SC_season" + season + "_disk2_5_5_2MD.nc"
+    lons, lats, counts_SC = seasonal_supercell_tracks_model_fmap(season, path, r_disk)
+    # plot_fmap(lons, lats, counts_SC, "supercell", r_disk=2, season=True, year=season, zoom=False, save=True, addname="")
+    # plot_fmap(lons, lats, counts_SC, "supercell", r_disk=2, season=True, year=season, zoom=True, save=True, addname="")
+    filename_SC = "/scratch/snx3000/mblanc/fmaps_data/SDT2/" + climate + "_climate/" + method + "/SC_season" + season + "_disk" + str(r_disk) + ".nc"
     write_to_netcdf(lons, lats, counts_SC, filename_SC)
 
 ## obs data ##
@@ -669,10 +689,10 @@ for season in years:
 # with xr.open_dataset("/scratch/snx3000/mblanc/fmaps_data/SDT2/" + method + "/SC_season" + season + "_disk2_zetath5_wth5.nc") as dset:
 #     counts3 = dset['frequency_map']
 
-# plot_fmap(lons, lats, counts1, typ, 2, season=True, year=season, zoom=False, save=True, addname="SDT1")
+# plot_fmap(lons, lats, counts1, typ, 2, season=True, year=season, zoom=False, save=False, addname="SDT1")
 # plot_fmap(lons, lats, counts2, typ, 2, season=True, year=season, zoom=False, save=True, addname="SDT2_4_6")
 # plot_fmap(lons, lats, counts3, typ, 2, season=True, year=season, zoom=False, save=True, addname="SDT2_5_5")
-# plot_fmap(lons, lats, counts1, typ, 2, season=True, year=season, zoom=True, save=True, addname="SDT1")
+# plot_fmap(lons, lats, counts1, typ, 2, season=True, year=season, zoom=True, save=False, addname="SDT1")
 # plot_fmap(lons, lats, counts2, typ, 2, season=True, year=season, zoom=True, save=True, addname="SDT2_4_6")
 # plot_fmap(lons, lats, counts3, typ, 2, season=True, year=season, zoom=True, save=True, addname="SDT2_5_5")
 
@@ -688,31 +708,32 @@ for season in years:
 # decadal frequency map from stored data
 
 # years = ["2011", "2012", "2013", "2014", "2015", "2016", "2017", "2018", "2019", "2020", "2021"]
-# #years = ["2019", "2020", "2021"]
+# years = ['2085', '2086', '2087', '2088', '2089', '2090', '2091', '2092', '2093', '2094', '2095']
+# years = ["2019", "2020", "2021"]
 # method = "model_tracks"
-# # iuhpts = [85, 95, 105]
-# climate = "current"
+# #iuhpts = [85, 95, 105]
+#climate = "current"
 typ = "supercell"
 
-# # mesocyclone map
+# mesocyclone map
 # for i, year in enumerate(years):
 #     if i == 0:
-#         with xr.open_dataset("/scratch/snx3000/mblanc/fmaps_data/SDT2/" + climate + "_climate/" + method + "/meso_season" + year + "_XPT_1MD_zetath4_wth6.nc") as dset:
+#         with xr.open_dataset("/scratch/snx3000/mblanc/fmaps_data/SDT2/" + climate + "_climate/" + method + "/meso_season" + year + ".nc") as dset:
 #             counts_meso = dset['frequency_map']
 #             lons = dset['lon'].values
 #             lats = dset['lat'].values
 #     else:
-#         with xr.open_dataset("/scratch/snx3000/mblanc/fmaps_data/SDT2/" + climate + "_climate/" + method + "/meso_season" + year + "_XPT_1MD_zetath4_wth6.nc") as dset:
+#         with xr.open_dataset("/scratch/snx3000/mblanc/fmaps_data/SDT2/" + climate + "_climate/" + method + "/meso_season" + year + ".nc") as dset:
 #             counts = dset['frequency_map']
 #         counts_meso += counts
 
-# plot_fmap(lons, lats, counts_meso/len(years), "mesocyclone", r_disk=0, zoom=False, save=True, addname="4_6")
-# plot_fmap(lons, lats, counts_meso/len(years), "mesocyclone", r_disk=0, zoom=True, save=True, addname="4_6")
+# plot_fmap(lons, lats, counts_meso/len(years), "mesocyclone", r_disk=0, zoom=False, save=True, addname="")
+# plot_fmap(lons, lats, counts_meso/len(years), "mesocyclone", r_disk=0, zoom=True, save=True, addname="")
 
 # supercell map
 
 for i, season in enumerate(years):
-    fname = "/scratch/snx3000/mblanc/fmaps_data/SDT2/" + climate + "_climate/" + method + "/SC_season" + season + "_disk2_5_5_2MD.nc"
+    fname = "/scratch/snx3000/mblanc/fmaps_data/SDT2/" + climate + "_climate/" + method + "/SC_season" + season + "_disk" + str(r_disk) + ".nc"
     if i == 0:
         with xr.open_dataset(fname) as dset:
             counts_SC = dset['frequency_map']
@@ -723,8 +744,8 @@ for i, season in enumerate(years):
             counts = dset['frequency_map']
         counts_SC += counts
 
-plot_fmap(lons, lats, counts_SC/len(years), typ, r_disk=2, zoom=False, save=True, addname="5_5_2MD")
-plot_fmap(lons, lats, counts_SC/len(years), typ, r_disk=2, zoom=True, save=True, addname="5_5_2MD")
+plot_fmap(lons, lats, counts_SC/len(years), typ, r_disk=r_disk, zoom=False, save=True, addname="")
+plot_fmap(lons, lats, counts_SC/len(years), typ, r_disk=r_disk, zoom=True, save=True, addname="")
 
 # for iuhpt in iuhpts:
 #     for i, year in enumerate(years):

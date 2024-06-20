@@ -4,10 +4,8 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 import matplotlib.pyplot as plt
-from matplotlib.ticker import FuncFormatter
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
-from scipy.signal import convolve2d
 from skimage.morphology import disk, dilation
 import argparse
 from matplotlib.colors import TwoSlopeNorm, BoundaryNorm
@@ -18,7 +16,7 @@ from matplotlib import gridspec
 # FUNCTIONS
 #==================================================================================================================================================
 
-def plot_fmap(lons, lats, fmap, typ, r_disk, season=False, year=None, zoom=False, save=False, addname=""):
+def plot_fmap(lons, lats, fmap, typ, r_disk, climate="current", season=False, year=None, zoom=False, save=False, addname=""):
     """
     Plots the desired decadal (default) or seasonal frequency map and saves the figure
     for the decadal maps expressed in anual average, directly provide the annually averaged counts in input
@@ -36,21 +34,22 @@ def plot_fmap(lons, lats, fmap, typ, r_disk, season=False, year=None, zoom=False
         type of the frequency map, eg "supercell", "rain", "mesocyclone"
     r_disk : int
         radius of the disk footprint in grid point
+    climate : str
+        "future" or "current"
     season : bool
         True for a seasonal frequency map, False for the decadal period. The default is False.
     year : str or None
         if seasonal, year YYYY of the season. Elsewise, None. The default is None.
     zoom : bool, optional
-        False: smart cut of whole domain (ocean and Northern Africa discarded) ; True: zoom on the Alps. The default is False.
-    conv : bool
-        False: number of storms per grid box, ie per 4.84 km^2; True: 4-connectivity sum convolution yields the number of storms per 24.2 km^2
-        caution: handling of dilation/convolution is performed beforehand, not in this plotting function
+        False: smart cut of whole domain (ocean and Northern Africa discarded) ; True: zoom on the Alps.
+    save : bool
+        option to save figure
     addname: str
         option to add additional information to figure name and title
 
     Returns
     -------
-    Plots the desired frequency map and saves it.
+    Plots the desired frequency map and saves it if requested.
     """
     
     if typ == "supercell" and season:
@@ -59,6 +58,7 @@ def plot_fmap(lons, lats, fmap, typ, r_disk, season=False, year=None, zoom=False
         fmap[fmap<0.001] = np.nan
         # set the norm
         bounds = [1, 2, 3, 4, 5, 6, 7]
+        bounds_str = [str(x) for x in bounds]
         norm = BoundaryNorm(boundaries=bounds, ncolors=256, extend='max')
     
     elif typ == "supercell" and not season:
@@ -66,8 +66,19 @@ def plot_fmap(lons, lats, fmap, typ, r_disk, season=False, year=None, zoom=False
         fmap = np.array(fmap.astype(float))
         fmap[fmap<0.001] = np.nan
         # set the norm
-        bounds = [1/11, 2/11, 4/11, 8/11, 1, 1.2, 1.4, 1.6, 1.8, 2]
-        bounds_str = ["1/11", "2/11", "4/11", "8/11", "1", "1.2", "1.4", "1.6", "1.8", "2"]
+        
+        if r_disk==2:
+            bounds = [0, 1/11, 2/11, 4/11, 6/11, 8/11, 1, 14/11, 17/11, 20/11, 2, 25/11]
+            bounds_str = ["0", "1/11", "2/11", "4/11", "6/11", "8/11", "1", "14/11", "17/11", "20/11", "23/11", "26/11"]
+        elif r_disk==0:
+            bounds = [0, 1/11, 2/11, 3/11, 4/11, 5/11, 6/11, 7/11, 8/11, 9/11]
+            bounds_str = ["0", "1/11", "2/11", "3/11", "4/11", "5/11", "6/11", "7/11", "8/11", "9/11"]
+        elif r_disk==5:
+            bounds = [0, 1/11, 4/11, 8/11, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5]
+            bounds_str = ["0", "1/11", "4/11", "8/11", "1", "1.5", "2", "2.5", "3", "3.5", "4", "4.5"]
+        else:
+            raise ValueError("Radius of influence ot considered")
+        
         norm = BoundaryNorm(boundaries=bounds, ncolors=256, extend='max')
         #norm = TwoSlopeNorm(vmin=0, vcenter=1, vmax=2)
         
@@ -77,19 +88,21 @@ def plot_fmap(lons, lats, fmap, typ, r_disk, season=False, year=None, zoom=False
         fmap[fmap<0.01] = np.nan
         # set the norm
         bounds = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6]
+        bounds_str = [str(x) for x in bounds]
         norm = BoundaryNorm(boundaries=bounds, ncolors=256, extend='max')
     else:
         raise TypeError("function not designed for rain so far")
     
     # determine the area of influence based on the footprint
     aoi = np.count_nonzero(disk(r_disk))*4.84
+    aoi = round(aoi, 2)
         
     # load geographic features
     resol = '10m'  # use data at this scale
     bodr = cfeature.NaturalEarthFeature(category='cultural', name='admin_0_boundary_lines_land', scale=resol,
-                                        facecolor='none', edgecolor='k', linestyle='-', alpha=1, linewidth=0.8)
+                                        facecolor='none', edgecolor='k', linestyle='-', alpha=1, linewidth=0.7)
     coastline = cfeature.NaturalEarthFeature(category='physical', name='coastline', scale=resol, facecolor='none',
-                                             edgecolor='k', linestyle='-', alpha=1, linewidth=0.8)
+                                             edgecolor='k', linestyle='-', alpha=1, linewidth=0.7)
     lakes = cfeature.NaturalEarthFeature(category='physical', name='lakes', scale=resol, facecolor='none',
                                          edgecolor='blue', linestyle='-', alpha=1, linewidth=0.8)
     rp = ccrs.RotatedPole(pole_longitude = -170, pole_latitude = 43)
@@ -109,7 +122,7 @@ def plot_fmap(lons, lats, fmap, typ, r_disk, season=False, year=None, zoom=False
         lab = r"number of " + typ + "s per " + str(aoi) + " $km^2$"
     else:
         figname = "decadal_" + typ + "_disk" + str(r_disk)
-        title = "Decadal " + typ + " distribution map"
+        title = climate + " climate decadal " + typ + " distribution map"
         lab = r"number of " + typ + "s per year per " + str(aoi) + " $km^2$"
     
     if zoom:
@@ -121,22 +134,146 @@ def plot_fmap(lons, lats, fmap, typ, r_disk, season=False, year=None, zoom=False
         zl, zr, zb, zt = 180, 25, 195, 25 #smart cut for entire domain
         cbar_orientation = "vertical"
 
-    cont = ax.pcolormesh(lons[zb:-zt,zl:-zr], lats[zb:-zt,zl:-zr], fmap[zb:-zt,zl:-zr], norm=norm, cmap="plasma", transform=ccrs.PlateCarree())
+    cont = ax.pcolormesh(lons[zb:-zt,zl:-zr], lats[zb:-zt,zl:-zr], fmap[zb:-zt,zl:-zr], norm=norm, cmap="CMRmap_r", transform=ccrs.PlateCarree())
     
     if addname:
         figname += "_" + addname + ".png"
         title += ", " + addname
     
     cbar = plt.colorbar(cont, orientation=cbar_orientation, label=lab)
+    cbar.set_ticks(bounds)
+    cbar.set_ticklabels(bounds_str)
+        
+    plt.title(title)
     
-    if typ == "supercell" and not season:
-        def custom_formatter(x, pos):
-            if x in bounds:
-                index = bounds.index(x)
-                return bounds_str[index]
-            return str(x)
-        cbar.ax.yaxis.set_major_formatter(FuncFormatter(custom_formatter))
-        cbar.ax.xaxis.set_major_formatter(FuncFormatter(custom_formatter))
+    if save:
+        fig.savefig(figname, dpi=300)
+    
+    return
+
+
+def plot_supercell_tracks_model_delta_map(r_disk, perc=True, zoom=False, save=False, addname=""):
+    """
+    from seasonally stored data, computes the current and future climate decadal supercell frequency maps and plots the
+    difference future - current
+
+    Parameters
+    ----------
+    r_disk : int
+        radius of the disk footprint in grid point
+    perc : boo
+        if True, the change is expressed in percentage; if False, the absolute change is computed
+    zoom : bool, optional
+        False: smart cut of whole domain (ocean and Northern Africa discarded) ; True: zoom on the Alps. The default is False.
+    save : bool
+        option to save figure
+    addname: str
+        option to add additional information to figure name and title
+
+    Returns
+    -------
+    plots the desired delat map and saves it if requested
+    """
+    
+    # determine the area of influence based on the footprint
+    aoi = np.count_nonzero(disk(r_disk))*4.84
+    aoi = round(aoi, 2)
+    
+    years_CC = ["2011", "2012", "2013", "2014", "2015", "2016", "2017", "2018", "2019", "2020", "2021"]
+    years_FC = ['2085', '2086', '2087', '2088', '2089', '2090', '2091', '2092', '2093', '2094', '2095']
+    
+    for i, season in enumerate(years_CC):
+        fname = "/scratch/snx3000/mblanc/fmaps_data/SDT2/current_climate/model_tracks/SC_season" + season + "_disk" + str(r_disk) + ".nc"
+        if i == 0:
+            with xr.open_dataset(fname) as dset:
+                counts_CC = dset['frequency_map']
+                lons = dset['lon'].values
+                lats = dset['lat'].values
+        else:
+            with xr.open_dataset(fname) as dset:
+                counts = dset['frequency_map']
+            counts_CC += counts
+    
+    for i, season in enumerate(years_FC):
+        fname = "/scratch/snx3000/mblanc/fmaps_data/SDT2/future_climate/model_tracks/SC_season" + season + "_disk" + str(r_disk) + ".nc"
+        if i == 0:
+            with xr.open_dataset(fname) as dset:
+                counts_FC = dset['frequency_map']
+        else:
+            with xr.open_dataset(fname) as dset:
+                counts = dset['frequency_map']
+            counts_FC += counts
+            
+    counts_CC, counts_FC = counts_CC/11, counts_FC/11
+    
+    if perc:
+        counts_CC = np.array(counts_CC.astype(float))
+        counts_CC[counts_CC==0] = np.nan # replace 0 values by nans
+        delta = 100*(counts_FC - counts_CC)/counts_CC # compute relative change
+        #print(np.nanmin(delta), np.nanmax(delta))
+        lab = r"Delta (%)"
+        figname = "delta_decadal_supercell_disk" + str(r_disk) + "_rel"
+        if r_disk==2:
+            bounds = [-100, -90, -70, -50, -30, -10, 10, 40, 80, 130, 200, 500]
+            bounds_str = ["-100", "-90", "-70", "-50", "-30", "-10", "10", "40", "80", "130", "200", "500"]
+        elif r_disk==5:
+            bounds = [-100, -75, -50, -25, 0, 25, 50, 75, 100]
+        else:
+            raise ValueError("Radius of influence not considered")
+    else:
+        delta = counts_FC - counts_CC # compute absolute change
+        #print(np.min(delta), np.max(delta))
+        lab = r"Delta (supercells per year per " + str(aoi) + " $km^2$)"
+        figname = "delta_decadal_supercell_disk" + str(r_disk) + "_abs"
+        eps = 1e-3
+        if r_disk==2:
+            bounds = [-2+eps, -19/11+eps, -15/11+eps, -1, -7/11+eps, -4/11+eps, -1/11+eps, 1/11, 4/11, 7/11, 1, 15/11, 19/11, 2]
+            bounds_str = ["-2", "-19/11", "-15/11", "-1", "-7/11", "-4/11", "-1/11", "1/11", "4/11", "7/11", "1", "15/11", "19/11", "2"]
+        elif r_disk==5:
+            bounds = [0, 1/11, 4/11, 8/11, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5]
+            bounds_str = ["0", "1/11", "4/11", "8/11", "1", "1.5", "2", "2.5", "3", "3.5", "4", "4.5"]
+        else:
+            raise ValueError("Radius of influence ot considered")
+    norm = BoundaryNorm(boundaries=bounds, ncolors=256, extend='both')
+    
+    # load geographic features
+    resol = '10m'  # use data at this scale
+    bodr = cfeature.NaturalEarthFeature(category='cultural', name='admin_0_boundary_lines_land', scale=resol,
+                                        facecolor='none', edgecolor='k', linestyle='-', alpha=1, linewidth=0.7)
+    coastline = cfeature.NaturalEarthFeature(category='physical', name='coastline', scale=resol, facecolor='none',
+                                             edgecolor='k', linestyle='-', alpha=1, linewidth=0.7)
+    lakes = cfeature.NaturalEarthFeature(category='physical', name='lakes', scale=resol, facecolor='none',
+                                         edgecolor='blue', linestyle='-', alpha=1, linewidth=0.8)
+    rp = ccrs.RotatedPole(pole_longitude = -170, pole_latitude = 43)
+    
+    if zoom:
+        fig = plt.figure(figsize=(10,10))
+    else:
+        fig = plt.figure(figsize=(10,8))
+    
+    ax = plt.axes(projection=rp)
+    ax.add_feature(bodr)
+    ax.add_feature(coastline)
+    title = "delta decadal supercell distribution map"
+    
+    if zoom:
+        zl, zr, zb, zt = 750, 400, 570, 700 #cut for Alpine region
+        figname += "_alps"
+        cbar_orientation = "horizontal"
+        ax.add_feature(lakes)
+    else:
+        zl, zr, zb, zt = 180, 25, 195, 25 #smart cut for entire domain
+        cbar_orientation = "vertical"
+
+    cont = ax.pcolormesh(lons[zb:-zt,zl:-zr], lats[zb:-zt,zl:-zr], delta[zb:-zt,zl:-zr], norm=norm, cmap="seismic", transform=ccrs.PlateCarree())
+    
+    if addname:
+        figname += "_" + addname + ".png"
+        title += ", " + addname
+    
+    cbar = plt.colorbar(cont, orientation=cbar_orientation, label=lab)
+    cbar.set_ticks(bounds)
+    cbar.set_ticklabels(bounds_str)
         
     plt.title(title)
     
@@ -247,7 +384,12 @@ def seasonal_supercell_tracks_model_fmap(season, path, r_disk, twoMD=False, skip
             for j in range(len(SC_lons)): # for each SC centre of mass location
                 distances = (lons - SC_lons[j])**2 + (lats - SC_lats[j])**2 # interpolate it from the lon-lat coords to the grid indices
                 k,l = np.unravel_index(np.argmin(distances), distances.shape) #indices on grid corresponding to the SC centre of mass interpolation
-                counts_SC[k-r_disk+fp_ind[:,0], l-r_disk+fp_ind[:,1]] = 1 # the 4-connectivity disk around centre of mass as proxy of SC core
+                
+                try:
+                    counts_SC[k-r_disk+fp_ind[:,0], l-r_disk+fp_ind[:,1]] = 1
+                except IndexError:
+                    # Handle the case where the index is out of bounds -> simply skip the footprint printing
+                    print('Index is out of bounds for the matrix and therefore skipped')
             
             counts_day += counts_SC
             
@@ -620,15 +762,15 @@ def supercell_tracks_model_obs_comp_2016_2021_fmaps(conv=True, save=False):
 #args = parser.parse_args()
 
 # # skipped_days = ['20120604', '20140923', '20150725', '20160927', '20170725']
-climate = "current"
+#climate = "future"
 # season = "2019" #args.season
-years = ["2011", "2012", "2013", "2014", "2015", "2016", "2017", "2018", "2019", "2020", "2021"]
-# years = ['2085', '2086', '2087', '2088', '2089', '2090', '2091', '2092', '2093', '2094', '2095']
+#years = ["2011", "2012", "2013", "2014", "2015", "2016", "2017", "2018", "2019", "2020", "2021"]
+#years = ['2085', '2086', '2087', '2088', '2089', '2090', '2091', '2092', '2093', '2094', '2095']
 # #years = ["2019", "2020", "2021"]
-method = "model_tracks"
+#method = "model_tracks"
 # ##iuh_thresh = args.iuh_thresh#
-path = "/scratch/snx3000/mblanc/SDT/SDT2_output/" + climate + "_climate/domain/XPT_1MD_zetath5_wth5/"
-r_disk = 5
+#path = "/scratch/snx3000/mblanc/SDT/SDT2_output/" + climate + "_climate/domain/XPT_1MD_zetath5_wth5/"
+#r_disk = 5
 
 # for season in years:
 #     lons, lats, counts_meso = seasonal_meso_masks_model_fmap(season, path)
@@ -643,12 +785,12 @@ r_disk = 5
 # filename_SC = "/scratch/snx3000/mblanc/fmaps_data/" + method + "/SC_season" + season + "_filtered.nc"
 # write_to_netcdf(lons, lats, counts_SC, filename_SC)
 
-for season in years:
-    lons, lats, counts_SC = seasonal_supercell_tracks_model_fmap(season, path, r_disk)
-    # plot_fmap(lons, lats, counts_SC, "supercell", r_disk=2, season=True, year=season, zoom=False, save=True, addname="")
-    # plot_fmap(lons, lats, counts_SC, "supercell", r_disk=2, season=True, year=season, zoom=True, save=True, addname="")
-    filename_SC = "/scratch/snx3000/mblanc/fmaps_data/SDT2/" + climate + "_climate/" + method + "/SC_season" + season + "_disk" + str(r_disk) + ".nc"
-    write_to_netcdf(lons, lats, counts_SC, filename_SC)
+# for season in years:
+#     lons, lats, counts_SC = seasonal_supercell_tracks_model_fmap(season, path, r_disk)
+#     # plot_fmap(lons, lats, counts_SC, "supercell", r_disk=2, season=True, year=season, zoom=False, save=True, addname="")
+#     # plot_fmap(lons, lats, counts_SC, "supercell", r_disk=2, season=True, year=season, zoom=True, save=True, addname="")
+#     filename_SC = "/scratch/snx3000/mblanc/fmaps_data/SDT2/" + climate + "_climate/" + method + "/SC_season" + season + "_disk" + str(r_disk) + ".nc"
+#     write_to_netcdf(lons, lats, counts_SC, filename_SC)
 
 ## obs data ##
 
@@ -713,7 +855,7 @@ for season in years:
 # method = "model_tracks"
 # #iuhpts = [85, 95, 105]
 #climate = "current"
-typ = "supercell"
+#typ = "supercell"
 
 # mesocyclone map
 # for i, year in enumerate(years):
@@ -732,20 +874,20 @@ typ = "supercell"
 
 # supercell map
 
-for i, season in enumerate(years):
-    fname = "/scratch/snx3000/mblanc/fmaps_data/SDT2/" + climate + "_climate/" + method + "/SC_season" + season + "_disk" + str(r_disk) + ".nc"
-    if i == 0:
-        with xr.open_dataset(fname) as dset:
-            counts_SC = dset['frequency_map']
-            lons = dset['lon'].values
-            lats = dset['lat'].values
-    else:
-        with xr.open_dataset(fname) as dset:
-            counts = dset['frequency_map']
-        counts_SC += counts
+# for i, season in enumerate(years):
+#     fname = "/scratch/snx3000/mblanc/fmaps_data/SDT2/" + climate + "_climate/" + method + "/SC_season" + season + "_disk" + str(r_disk) + ".nc"
+#     if i == 0:
+#         with xr.open_dataset(fname) as dset:
+#             counts_SC = dset['frequency_map']
+#             lons = dset['lon'].values
+#             lats = dset['lat'].values
+#     else:
+#         with xr.open_dataset(fname) as dset:
+#             counts = dset['frequency_map']
+#         counts_SC += counts
 
-plot_fmap(lons, lats, counts_SC/len(years), typ, r_disk=r_disk, zoom=False, save=True, addname="")
-plot_fmap(lons, lats, counts_SC/len(years), typ, r_disk=r_disk, zoom=True, save=True, addname="")
+# plot_fmap(lons, lats, counts_SC/len(years), typ, r_disk, climate, zoom=False, save=True, addname="")
+# plot_fmap(lons, lats, counts_SC/len(years), typ, r_disk, climate, zoom=True, save=True, addname="")
 
 # for iuhpt in iuhpts:
 #     for i, year in enumerate(years):
@@ -780,3 +922,9 @@ plot_fmap(lons, lats, counts_SC/len(years), typ, r_disk=r_disk, zoom=True, save=
 # plot_fmap(lons, lats, counts1, typ, season=True, year=season, zoom=False, filtering=False, conv=True, save=True, iuh_thresh=None, addname="CT1")
 # write_to_netcdf(lons, lats, counts2, filename2)
 # write_to_netcdf(lons, lats, counts1, filename1)
+
+#==================================================================================================================================================
+# delta maps
+
+plot_supercell_tracks_model_delta_map(r_disk=2, perc=True, zoom=False, save=True, addname="")
+plot_supercell_tracks_model_delta_map(r_disk=2, perc=False, zoom=False, save=True, addname="")

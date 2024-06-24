@@ -152,6 +152,127 @@ def plot_fmap(lons, lats, fmap, typ, r_disk, climate="current", season=False, ye
     return
 
 
+def plot_supercell_seasonal_fmap(start_day, end_day, path, r_disk, climate, zoom=False, save=False, addname=""):
+    """
+    from SDT2 output data, plots the (averaged per year) supercell seasonal frequency map of the requested climate of the
+    period delimited by the starting and ending days; designed for consecutive months
+
+    Parameters
+    ----------
+    start_day : str
+        first day of the considered period, mmdd
+    end_day : str
+        last day of the considered period, mmdd
+    path : str
+        path to the SDT output files
+    r_disk : int
+        radius of the disk footprint in grid point
+    zoom : bool, optional
+        False: smart cut of whole domain (ocean and Northern Africa discarded) ; True: zoom on the Alps. The default is False.
+    save : bool
+        option to save figure
+    addname: str
+        option to add additional information to figure name and title
+
+    Returns
+    -------
+    plots the desired map and saves it if requested
+    """
+    
+    if climate=="current":
+        years = ["2011", "2012", "2013", "2014", "2015", "2016", "2017", "2018", "2019", "2020", "2021"]
+    else:
+        years = ['2085', '2086', '2087', '2088', '2089', '2090', '2091', '2092', '2093', '2094', '2095']
+    
+    # determine the delimiting months from the dates
+    months_num = ["04", "05", "06", "07", "08", "09", "10", "11"]
+    months = ["April", "May", "June", "July", "August", "September", "October", "November"]
+    start_month = months[months_num.index(start_day[:2])]
+    end_month = months[months_num.index(end_day[:2])]
+    
+    # compute the seasonal map
+    for i, year in enumerate(years):
+        day_i = year + start_day
+        day_f = year + end_day
+        if i==0:
+            lons, lats, counts_SC = seasonal_supercell_tracks_model_fmap(day_i, day_f, path, r_disk)
+        else:
+            _, _, counts = seasonal_supercell_tracks_model_fmap(day_i, day_f, path, r_disk)
+            counts_SC += counts
+    counts_SC = counts_SC/len(years)
+    
+    # mask the 0 values
+    counts_SC = np.array(counts_SC.astype(float))
+    counts_SC[counts_SC<0.001] = np.nan
+    
+    # set the bounds and norm
+    if r_disk==2:
+        bounds = [0, 1/11, 2/11, 4/11, 6/11, 8/11, 1, 14/11, 17/11, 20/11, 2, 25/11]
+        bounds_str = ["0", "1/11", "2/11", "4/11", "6/11", "8/11", "1", "14/11", "17/11", "20/11", "23/11", "26/11"]
+    elif r_disk==0:
+        bounds = [0, 1/11, 2/11, 3/11, 4/11, 5/11, 6/11, 7/11, 8/11, 9/11]
+        bounds_str = ["0", "1/11", "2/11", "3/11", "4/11", "5/11", "6/11", "7/11", "8/11", "9/11"]
+    elif r_disk==5:
+        bounds = [0, 1/11, 4/11, 8/11, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5]
+        bounds_str = ["0", "1/11", "4/11", "8/11", "1", "1.5", "2", "2.5", "3", "3.5", "4", "4.5"]
+    else:
+        raise ValueError("Radius of influence ot considered")
+    norm = BoundaryNorm(boundaries=bounds, ncolors=256, extend='max')
+    
+    # determine the area of influence based on the footprint
+    aoi = np.count_nonzero(disk(r_disk))*4.84
+    aoi = round(aoi)
+        
+    # load geographic features
+    resol = '10m'  # use data at this scale
+    bodr = cfeature.NaturalEarthFeature(category='cultural', name='admin_0_boundary_lines_land', scale=resol,
+                                        facecolor='none', edgecolor='k', linestyle='-', alpha=1, linewidth=0.7)
+    coastline = cfeature.NaturalEarthFeature(category='physical', name='coastline', scale=resol, facecolor='none',
+                                             edgecolor='k', linestyle='-', alpha=1, linewidth=0.7)
+    lakes = cfeature.NaturalEarthFeature(category='physical', name='lakes', scale=resol, facecolor='none',
+                                         edgecolor='blue', linestyle='-', alpha=1, linewidth=0.8)
+    rp = ccrs.RotatedPole(pole_longitude = -170, pole_latitude = 43)
+    
+    if zoom:
+        fig = plt.figure(figsize=(10,10))
+    else:
+        fig = plt.figure(figsize=(10,8))
+    
+    ax = plt.axes(projection=rp)
+    ax.add_feature(bodr)
+    ax.add_feature(coastline)
+    
+    figname = "season_" + start_month + "_" + end_month + "_disk" + str(r_disk)
+    title = climate + " climate seasonal " + start_month + "-" + end_month + " supercell distribution map"
+    lab = r"number of supercells per year per " + str(aoi) + " $km^2$"
+    
+    if zoom:
+        zl, zr, zb, zt = 750, 400, 570, 700 #cut for Alpine region
+        figname += "_alps"
+        cbar_orientation = "horizontal"
+        ax.add_feature(lakes)
+    else:
+        zl, zr, zb, zt = 180, 25, 195, 25 #smart cut for entire domain
+        cbar_orientation = "vertical"
+
+    cont = ax.pcolormesh(lons[zb:-zt,zl:-zr], lats[zb:-zt,zl:-zr], counts_SC[zb:-zt,zl:-zr], norm=norm, cmap="CMRmap_r", transform=ccrs.PlateCarree())
+    
+    if addname:
+        figname += "_" + addname + ".png"
+        title += ", " + addname
+    
+    cbar = plt.colorbar(cont, orientation=cbar_orientation, label=lab)
+    cbar.set_ticks(bounds)
+    cbar.set_ticklabels(bounds_str)
+        
+    plt.title(title)
+    
+    if save:
+        fig.savefig(figname, dpi=300)
+    
+    return
+
+
 def plot_supercell_tracks_model_delta_map(r_disk, perc=False, zoom=False, save=False, addname=""):
     """
     from seasonally stored data, computes the current and future climate decadal supercell frequency maps and plots the
@@ -310,15 +431,17 @@ def resolve_overlaps(rain_masks):
     return counts
 
 
-def seasonal_supercell_tracks_model_fmap(season, path, r_disk, twoMD=False, skipped_days=None):
+def seasonal_supercell_tracks_model_fmap(start_day, end_day, path, r_disk, twoMD=False, skipped_days=None):
     """
     Computes the seasonal supercell frequency map using tracks method over the model whole domain
     Takes care of overlaps by default
     
     Parameters
     ----------
-    season : str
-        considered season, YYYY
+    start_day : str
+        first day of the considered period, YYYYmmdd
+    end_day : str
+        last day of the considered period, YYYYmmdd
     path : str
         path to the SDT output files
     r_disk : int
@@ -338,12 +461,12 @@ def seasonal_supercell_tracks_model_fmap(season, path, r_disk, twoMD=False, skip
         the desired seasonal supercell frequency map
     """
     
-    start_day = pd.to_datetime(season + "0401")
-    end_day = pd.to_datetime(season + "0930")
+    start_day = pd.to_datetime(start_day)
+    end_day = pd.to_datetime(end_day)
     daylist = pd.date_range(start_day, end_day)
     
     # load lons and lats static fields
-    with xr.open_dataset(path + "/meso_masks_" + season + "0401.nc") as dset:
+    with xr.open_dataset(path + "/meso_masks_" + daylist[0].strftime("%Y%m%d") + ".nc") as dset:
         lons = dset["lon"].values
         lats = dset["lat"].values
     
@@ -359,7 +482,7 @@ def seasonal_supercell_tracks_model_fmap(season, path, r_disk, twoMD=False, skip
     for day in daylist:
         SC_files.append(path + "/supercell_" + day.strftime("%Y%m%d") + ".json")
     
-    # loop over the days of the season
+    # loop over the days
     for SC_file in SC_files:
         # initialise an intermediate counts matrix for this day, which will contain its supercells tracks footprint; this incidentally avoids overlaps
         counts_day = np.zeros_like(lons, dtype=int) 

@@ -152,7 +152,7 @@ def plot_fmap(lons, lats, fmap, typ, r_disk, climate="current", season=False, ye
     return
 
 
-def plot_supercell_tracks_model_delta_map(r_disk, perc=True, zoom=False, save=False, addname=""):
+def plot_supercell_tracks_model_delta_map(r_disk, perc=False, zoom=False, save=False, addname=""):
     """
     from seasonally stored data, computes the current and future climate decadal supercell frequency maps and plots the
     difference future - current
@@ -177,7 +177,7 @@ def plot_supercell_tracks_model_delta_map(r_disk, perc=True, zoom=False, save=Fa
     
     # determine the area of influence based on the footprint
     aoi = np.count_nonzero(disk(r_disk))*4.84
-    aoi = round(aoi, 2)
+    aoi = round(aoi)
     
     years_CC = ["2011", "2012", "2013", "2014", "2015", "2016", "2017", "2018", "2019", "2020", "2021"]
     years_FC = ['2085', '2086', '2087', '2088', '2089', '2090', '2091', '2092', '2093', '2094', '2095']
@@ -217,7 +217,8 @@ def plot_supercell_tracks_model_delta_map(r_disk, perc=True, zoom=False, save=Fa
             bounds = [-100, -90, -70, -50, -30, -10, 10, 40, 80, 130, 200, 500]
             bounds_str = ["-100", "-90", "-70", "-50", "-30", "-10", "10", "40", "80", "130", "200", "500"]
         elif r_disk==5:
-            bounds = [-100, -75, -50, -25, 0, 25, 50, 75, 100]
+            bounds = [-100, -90, -70, -50, -30, -10, 10, 40, 80, 130, 200, 500]
+            bounds_str = ["-100", "-90", "-70", "-50", "-30", "-10", "10", "40", "80", "130", "200", "500"]
         else:
             raise ValueError("Radius of influence not considered")
     else:
@@ -230,8 +231,8 @@ def plot_supercell_tracks_model_delta_map(r_disk, perc=True, zoom=False, save=Fa
             bounds = [-2+eps, -19/11+eps, -15/11+eps, -1, -7/11+eps, -4/11+eps, -1/11+eps, 1/11, 4/11, 7/11, 1, 15/11, 19/11, 2]
             bounds_str = ["-2", "-19/11", "-15/11", "-1", "-7/11", "-4/11", "-1/11", "1/11", "4/11", "7/11", "1", "15/11", "19/11", "2"]
         elif r_disk==5:
-            bounds = [0, 1/11, 4/11, 8/11, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5]
-            bounds_str = ["0", "1/11", "4/11", "8/11", "1", "1.5", "2", "2.5", "3", "3.5", "4", "4.5"]
+            bounds = [-2+eps, -19/11+eps, -15/11+eps, -1, -7/11+eps, -4/11+eps, -1/11+eps, 1/11, 4/11, 7/11, 1, 15/11, 19/11, 2]
+            bounds_str = ["-2", "-19/11", "-15/11", "-1", "-7/11", "-4/11", "-1/11", "1/11", "4/11", "7/11", "1", "15/11", "19/11", "2"]
         else:
             raise ValueError("Radius of influence ot considered")
     norm = BoundaryNorm(boundaries=bounds, ncolors=256, extend='both')

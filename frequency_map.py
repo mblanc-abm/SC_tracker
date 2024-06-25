@@ -69,7 +69,7 @@ def plot_fmap(lons, lats, fmap, typ, r_disk, climate="current", season=False, ye
         
         if r_disk==2:
             bounds = [0, 1/11, 2/11, 4/11, 6/11, 8/11, 1, 14/11, 17/11, 20/11, 2, 25/11]
-            bounds_str = ["0", "1/11", "2/11", "4/11", "6/11", "8/11", "1", "14/11", "17/11", "20/11", "23/11", "26/11"]
+            bounds_str = ["0", "1/11", "2/11", "4/11", "6/11", "8/11", "1", "14/11", "17/11", "20/11", "2", "25/11"]
         elif r_disk==0:
             bounds = [0, 1/11, 2/11, 3/11, 4/11, 5/11, 6/11, 7/11, 8/11, 9/11]
             bounds_str = ["0", "1/11", "2/11", "3/11", "4/11", "5/11", "6/11", "7/11", "8/11", "9/11"]
@@ -154,8 +154,8 @@ def plot_fmap(lons, lats, fmap, typ, r_disk, climate="current", season=False, ye
 
 def plot_supercell_seasonal_fmap(start_day, end_day, path, r_disk, climate, zoom=False, save=False, addname=""):
     """
-    from SDT2 output data, plots the (averaged per year) supercell seasonal frequency map of the requested climate of the
-    period delimited by the starting and ending days; designed for consecutive months
+    from SDT2 output data, computes and plots the (averaged per year) supercell seasonal frequency map of the requested climate
+    of the period delimited by the starting and ending days; designed for consecutive months
 
     Parameters
     ----------
@@ -167,6 +167,8 @@ def plot_supercell_seasonal_fmap(start_day, end_day, path, r_disk, climate, zoom
         path to the SDT output files
     r_disk : int
         radius of the disk footprint in grid point
+    climate : str
+        "future" or "current"
     zoom : bool, optional
         False: smart cut of whole domain (ocean and Northern Africa discarded) ; True: zoom on the Alps. The default is False.
     save : bool
@@ -201,22 +203,15 @@ def plot_supercell_seasonal_fmap(start_day, end_day, path, r_disk, climate, zoom
             counts_SC += counts
     counts_SC = counts_SC/len(years)
     
-    # mask the 0 values
-    counts_SC = np.array(counts_SC.astype(float))
-    counts_SC[counts_SC<0.001] = np.nan
-    
     # set the bounds and norm
     if r_disk==2:
-        bounds = [0, 1/11, 2/11, 4/11, 6/11, 8/11, 1, 14/11, 17/11, 20/11, 2, 25/11]
-        bounds_str = ["0", "1/11", "2/11", "4/11", "6/11", "8/11", "1", "14/11", "17/11", "20/11", "23/11", "26/11"]
-    elif r_disk==0:
-        bounds = [0, 1/11, 2/11, 3/11, 4/11, 5/11, 6/11, 7/11, 8/11, 9/11]
-        bounds_str = ["0", "1/11", "2/11", "3/11", "4/11", "5/11", "6/11", "7/11", "8/11", "9/11"]
+        bounds = [0, 1/11, 2/11, 3/11, 4/11, 5/11, 6/11, 7/11, 8/11, 9/11, 10/11, 1]
+        bounds_str = ["0", "1/11", "2/11", "3/11", "4/11", "5/11", "6/11", "7/11", "8/11", "9/11", "10/11", "1"]
     elif r_disk==5:
-        bounds = [0, 1/11, 4/11, 8/11, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5]
-        bounds_str = ["0", "1/11", "4/11", "8/11", "1", "1.5", "2", "2.5", "3", "3.5", "4", "4.5"]
+        bounds = [0, 1/11, 2/11, 4/11, 6/11, 8/11, 1, 14/11, 17/11, 20/11, 2, 25/11]
+        bounds_str = ["0", "1/11", "2/11", "4/11", "6/11", "8/11", "1", "14/11", "17/11", "20/11", "2", "25/11"]
     else:
-        raise ValueError("Radius of influence ot considered")
+        raise ValueError("Radius of influence not considered")
     norm = BoundaryNorm(boundaries=bounds, ncolors=256, extend='max')
     
     # determine the area of influence based on the footprint
@@ -1050,5 +1045,29 @@ def supercell_tracks_model_obs_comp_2016_2021_fmaps(conv=True, save=False):
 #==================================================================================================================================================
 # delta maps
 
-plot_supercell_tracks_model_delta_map(r_disk=2, perc=True, zoom=False, save=True, addname="")
-plot_supercell_tracks_model_delta_map(r_disk=2, perc=False, zoom=False, save=True, addname="")
+# plot_supercell_tracks_model_delta_map(r_disk=2, perc=True, zoom=False, save=True, addname="")
+# plot_supercell_tracks_model_delta_map(r_disk=2, perc=False, zoom=False, save=True, addname="")
+
+#==================================================================================================================================================
+# seasonal maps
+
+parser = argparse.ArgumentParser()
+parser.add_argument("start_day", type=str)
+parser.add_argument("end_day", type=str)
+parser.add_argument("climate", type=str)
+parser.add_argument("r_disk", type=int)
+args = parser.parse_args()
+
+start_day = args.start_day
+end_day = args.end_day
+climate = args.climate
+r_disk = args.r_disk
+path = "/scratch/snx3000/mblanc/SDT/SDT2_output/" + climate + "_climate/domain/XPT_1MD_zetath5_wth5/"
+
+# start_day = "0601"
+# end_day = "0731"
+# climate = "current"
+# r_disk = 5
+# path = "/scratch/snx3000/mblanc/SDT/SDT2_output/" + climate + "_climate/domain/XPT_1MD_zetath5_wth5/"
+
+plot_supercell_seasonal_fmap(start_day, end_day, path, r_disk, climate, zoom=False, save=True, addname="")

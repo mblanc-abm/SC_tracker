@@ -72,8 +72,8 @@ def main(outpath, day, hours, zeta_th, w_th, zeta_pk=None, two_meso_detections=F
     
     #write data to output files
     print("writing data to file")
-    outfile_json = os.path.join(outpath, "supercell_zetath" + str(zeta_th) + "_wth" + str(w_th) + "_" + day + ".json")
-    outfile_nc = os.path.join(outpath, "meso_masks_zetath" + str(zeta_th) + "_wth" + str(w_th) + "_" + day + ".nc")
+    outfile_json = os.path.join(outpath, "supercell_" + day + ".json")
+    outfile_nc = os.path.join(outpath, "meso_masks_" + day + ".nc")
     write_to_json(supercells, na_vorticies, outfile_json)
     write_masks_to_netcdf(supercells, lons, lats, outfile_nc)
 
@@ -84,14 +84,14 @@ def main(outpath, day, hours, zeta_th, w_th, zeta_pk=None, two_meso_detections=F
 #====================================================================================================================
 ## all case studies in a row, several thresholds testing ##
 
-outpath = "/scratch/snx3000/mblanc/SDT/SDT2_output/current_climate/CaseStudies/PT_2MD"
+outpath = "/scratch/snx3000/mblanc/SDT/SDT2_output/current_climate/CaseStudies/XPT_2MD"
 CS_days = ['20120630', '20130727', '20130729', '20140625', '20170801', '20190610', '20190611', '20190613', '20190614',
             '20190820', '20210620', '20210628', '20210629', '20210708', '20210712', '20210713']
 CS_ranges = [np.arange(14,24), np.arange(14,23), np.arange(7,16), np.arange(10,17), np.arange(18,24), np.arange(16,21),
               np.arange(9,17), np.arange(17,20), np.arange(18,24), np.arange(13,22), np.arange(13,19), np.arange(10,22),
               np.arange(11,21), np.arange(13,17), np.arange(17,20), np.arange(11,16)]
 zeta_th = 4e-3
-zeta_pk = 6e-3
+zeta_pk = None
 w_th = 6
 two_meso_detections = True
 
@@ -107,15 +107,3 @@ for day, hours in zip(CS_days, CS_ranges):
 # zeta_th = 4
 # w_th = 6
 # main(outpath, day, hours, zeta_th, w_th)
-
-#====================================================================================================================
-
-# if __name__ == "__main__":
-#     p = argparse.ArgumentParser(description="tracks cells")
-#     p.add_argument("inpath", type=str, help="path to input files")
-#     p.add_argument("outpath", type=str, help="path to output files")
-#     p.add_argument("start_day", type=str, help="start day")
-#     p.add_argument("end_day", type=str, help="end day")
-#     args = p.parse_args()
-
-#     main(**vars(args))

@@ -85,8 +85,8 @@ def main(climate, start_day, end_day, zeta_th=5e-3, zeta_pk=None, w_th=5, two_me
 #====================================================================================================================
 
 # climate = "current_climate"
-# start_day = "20120630"
-# end_day = "20120630"
+# start_day = "20181031"
+# end_day = "20181031"
 
 # main(climate, start_day, end_day)
 

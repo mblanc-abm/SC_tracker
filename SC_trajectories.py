@@ -186,21 +186,22 @@ def plot_obs_tracks(daystr, obs_ids, usecols, save=False):
         fig.savefig(daystr + "_obs.png", dpi=300)
 
 
-def plot_SDT2_tracks(daystr, zeta_th, w_th, usecols, save=False):
+def plot_SDT2_tracks(daystr, version, zeta_th=None, w_th=None, save=False):
     """
-    plots the tracks of SDT2 modelled supercells (meso detections indicated with crosses) occuring during the given case study
+    plots the tracks of SDT2 modelled supercells occuring during the given case study
+    meso detections indicated with crosses
     tailor the plot diplay to the needs
 
     Parameters
     ----------
     daystr : str
         day of the case study, YYYYmmdd
+    version : str
+        version of SDT2, ie "XPT_1MD", "XPT_2MD", "PT_1MD", "PT_2MD"
     zeta_th : float
-        vorticity threshold
+        if version == "XPT_1MD", specify vorticity threshold
     w_th : float
-        updraught velocity threshold
-    usecols : list of str
-        parameters/variables meant to be extracted from the observational dataset
+        if version == "XPT_1MD", specify updraught velocity threshold
     save : bool
         option to save the figure
 
@@ -208,12 +209,14 @@ def plot_SDT2_tracks(daystr, zeta_th, w_th, usecols, save=False):
     -------
     plots the desired modelled tracks on a single plot and saves the figure if requested
     """
-    zeta_th = str(zeta_th)
-    w_th = str(w_th)
     
-    ## modelled supercells ##
-    # SC info : contains coords of tracks as well as coords of meso-detections
-    tracks_name = "/scratch/snx3000/mblanc/SDT/SDT2_output/current_climate/CaseStudies/supercell_"+"zetath"+zeta_th+"_wth"+w_th+"_"+daystr+".json"
+    if version == "XPT_1MD":
+        zeta_th = str(zeta_th)
+        w_th = str(w_th)
+        tracks_name = "/scratch/snx3000/mblanc/SDT/SDT2_output/current_climate/CaseStudies/XPT_1MD/supercell_"+"zetath"+zeta_th+"_wth"+w_th+"_"+daystr+".json"
+    else:
+        tracks_name = "/scratch/snx3000/mblanc/SDT/SDT2_output/current_climate/CaseStudies/" + version + "/supercell_" + daystr + ".json"
+    
     with open(tracks_name, "r") as read_file:
         SC_info = json.load(read_file)['supercell_data']
 
@@ -237,10 +240,21 @@ def plot_SDT2_tracks(daystr, zeta_th, w_th, usecols, save=False):
         col = cmap[i]
         ax.plot(SC_info[i]['cell_lon'], SC_info[i]['cell_lat'], '--', linewidth=0.7, color=col, transform=ccrs.PlateCarree())
         ax.plot(SC_info[i]['meso_lon'], SC_info[i]['meso_lat'], 'x', markersize=2, color=col, transform=ccrs.PlateCarree())
-    ax.title.set_text(r"modelled supercells; $\zeta_{th}=$"+zeta_th+"; $w_{th}=$"+w_th)
+    
+    if version == "XPT_1MD":
+        title = r"modelled supercells; XPT_1MD; $\zeta_{th}=$"+zeta_th+", $w_{th}=$"+w_th
+        figname = daystr + "_SDT2_zetath" + zeta_th + "_wth" + w_th + ".png"
+    elif version == "XPT_2MD":
+        title = r"modelled supercells; XPT_2MD; $\zeta_{th}=0.004$, $w_{th}=6$"
+        figname = daystr + "_SDT2.png"
+    else:
+        title = r"modelled supercells; " + version + "; $\zeta_{th}=0.004$, $w_{th}=6$, $\zeta_{pk}=0.006$"
+        figname = daystr + "_SDT2.png"
+    
+    ax.title.set_text(title)
     
     if save:
-        fig.savefig(daystr + "_SDT2_zetath"+zeta_th+"_wth"+w_th+".png", dpi=300)
+        fig.savefig(figname, dpi=300)
 
 #=====================================================================================================================================================
 # MAIN
@@ -248,9 +262,10 @@ def plot_SDT2_tracks(daystr, zeta_th, w_th, usecols, save=False):
 
 # usecols = ['ID', 'time', 'mesostorm', 'mesohailstorm', 'lon', 'lat', 'area', 'vel_x', 'vel_y', 'altitude', 'slope', 'max_CPC', 'mean_CPC', 'max_MESHS', 'mean_MESHS',
 #            'p_radar', 'p_x', 'p_y', 'p_dz', 'p_z_0', 'p_z_100', 'p_v_mean', 'p_d_mean', 'n_radar', 'n_x', 'n_y', 'n_dz', 'n_z_0', 'n_z_100', 'n_v_mean', 'n_d_mean']
-usecols = ['ID', 'time', 'mesostorm', 'mesohailstorm', 'lon', 'lat']
+#usecols = ['ID', 'time', 'mesostorm', 'mesohailstorm', 'lon', 'lat']
+version = "XPT_1MD"
 
-#search for supercells occuring on the case study day
+# search for supercells occuring on the case study day
 #ids, dts = find_obs_supercells(day, usecols)
 
 # data to be filled
@@ -279,11 +294,8 @@ obs_ids_CSs = [[2017080121350019, 2017080118100168, 2017080117350013, 2017080114
 #obs_ids = [2021071216000078, 2021071218100030, 2021071221500035, 2021071303550123, 2021071303500063]
 #obs_ids = [2021071305200023, 2021071316500115, 2021071313500163, 2021071308450138, 2021071308250110, 2021071306450059, 2021071305400035, 2021071315500027, 2021071314100163, 2021071314100031, 2021071313100125, 2021071312400110, 2021071304100142]
 
-zeta_ths = np.array([4,5,6])*1e-3
-w_ths = [5,6,7]
+zeta_th = 5e-3
+w_th = 6
 
-for zeta_th in zeta_ths:
-    for w_th in w_ths:
-        for daystr, obs_ids in zip(daysstr, obs_ids_CSs):
-            #plot_obs_tracks(daystr, obs_ids, usecols, save=True)
-            plot_SDT2_tracks(daystr, zeta_th, w_th, usecols, save=True)
+for daystr in daysstr:
+    plot_SDT2_tracks(daystr, version, zeta_th, w_th, save=True)

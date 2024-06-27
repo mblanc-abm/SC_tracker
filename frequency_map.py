@@ -62,11 +62,7 @@ def plot_fmap(lons, lats, fmap, typ, r_disk, climate="current", season=False, ye
         norm = BoundaryNorm(boundaries=bounds, ncolors=256, extend='max')
     
     elif typ == "supercell" and not season:
-        # mask the 0 values
-        fmap = np.array(fmap.astype(float))
-        fmap[fmap<0.001] = np.nan
         # set the norm
-        
         if r_disk==2:
             bounds = [0, 1/11, 2/11, 4/11, 6/11, 8/11, 1, 14/11, 17/11, 20/11, 2, 25/11]
             bounds_str = ["0", "1/11", "2/11", "4/11", "6/11", "8/11", "1", "14/11", "17/11", "20/11", "2", "25/11"]
@@ -95,7 +91,7 @@ def plot_fmap(lons, lats, fmap, typ, r_disk, climate="current", season=False, ye
     
     # determine the area of influence based on the footprint
     aoi = np.count_nonzero(disk(r_disk))*4.84
-    aoi = round(aoi, 2)
+    aoi = round(aoi)
         
     # load geographic features
     resol = '10m'  # use data at this scale
@@ -150,7 +146,6 @@ def plot_fmap(lons, lats, fmap, typ, r_disk, climate="current", season=False, ye
         fig.savefig(figname, dpi=300)
     
     return
-
 
 def plot_supercell_seasonal_fmap(start_day, end_day, path, r_disk, climate, zoom=False, save=False, addname=""):
     """
@@ -876,13 +871,15 @@ def supercell_tracks_model_obs_comp_2016_2021_fmaps(conv=True, save=False):
 
 ## model data ##
 
-#parser = argparse.ArgumentParser()
-#parser.add_argument("season", type=str)
-#args = parser.parse_args()
+# parser = argparse.ArgumentParser()
+# parser.add_argument("r_disk", type=int)
+# args = parser.parse_args()
+# r_disk = args.r_disk
 
 # # skipped_days = ['20120604', '20140923', '20150725', '20160927', '20170725']
 #climate = "future"
-# season = "2019" #args.season
+#start_day = "0401"
+#end_day = "1130"
 #years = ["2011", "2012", "2013", "2014", "2015", "2016", "2017", "2018", "2019", "2020", "2021"]
 #years = ['2085', '2086', '2087', '2088', '2089', '2090', '2091', '2092', '2093', '2094', '2095']
 # #years = ["2019", "2020", "2021"]
@@ -905,7 +902,9 @@ def supercell_tracks_model_obs_comp_2016_2021_fmaps(conv=True, save=False):
 # write_to_netcdf(lons, lats, counts_SC, filename_SC)
 
 # for season in years:
-#     lons, lats, counts_SC = seasonal_supercell_tracks_model_fmap(season, path, r_disk)
+#     day_i = season + start_day
+#     day_f = season + end_day
+#     lons, lats, counts_SC = seasonal_supercell_tracks_model_fmap(day_i, day_f, path, r_disk)
 #     # plot_fmap(lons, lats, counts_SC, "supercell", r_disk=2, season=True, year=season, zoom=False, save=True, addname="")
 #     # plot_fmap(lons, lats, counts_SC, "supercell", r_disk=2, season=True, year=season, zoom=True, save=True, addname="")
 #     filename_SC = "/scratch/snx3000/mblanc/fmaps_data/SDT2/" + climate + "_climate/" + method + "/SC_season" + season + "_disk" + str(r_disk) + ".nc"
@@ -1048,21 +1047,24 @@ def supercell_tracks_model_obs_comp_2016_2021_fmaps(conv=True, save=False):
 # plot_supercell_tracks_model_delta_map(r_disk=2, perc=True, zoom=False, save=True, addname="")
 # plot_supercell_tracks_model_delta_map(r_disk=2, perc=False, zoom=False, save=True, addname="")
 
+# plot_supercell_tracks_model_delta_map(r_disk=5, perc=True, zoom=False, save=True, addname="")
+# plot_supercell_tracks_model_delta_map(r_disk=5, perc=False, zoom=False, save=True, addname="")
+
 #==================================================================================================================================================
 # seasonal maps
 
-parser = argparse.ArgumentParser()
-parser.add_argument("start_day", type=str)
-parser.add_argument("end_day", type=str)
-parser.add_argument("climate", type=str)
-parser.add_argument("r_disk", type=int)
-args = parser.parse_args()
+# parser = argparse.ArgumentParser()
+# parser.add_argument("start_day", type=str)
+# parser.add_argument("end_day", type=str)
+# parser.add_argument("climate", type=str)
+# parser.add_argument("r_disk", type=int)
+# args = parser.parse_args()
 
-start_day = args.start_day
-end_day = args.end_day
-climate = args.climate
-r_disk = args.r_disk
-path = "/scratch/snx3000/mblanc/SDT/SDT2_output/" + climate + "_climate/domain/XPT_1MD_zetath5_wth5/"
+# start_day = args.start_day
+# end_day = args.end_day
+# climate = args.climate
+# r_disk = args.r_disk
+# path = "/scratch/snx3000/mblanc/SDT/SDT2_output/" + climate + "_climate/domain/XPT_1MD_zetath5_wth5/"
 
 # start_day = "0601"
 # end_day = "0731"
@@ -1070,4 +1072,4 @@ path = "/scratch/snx3000/mblanc/SDT/SDT2_output/" + climate + "_climate/domain/X
 # r_disk = 5
 # path = "/scratch/snx3000/mblanc/SDT/SDT2_output/" + climate + "_climate/domain/XPT_1MD_zetath5_wth5/"
 
-plot_supercell_seasonal_fmap(start_day, end_day, path, r_disk, climate, zoom=False, save=True, addname="")
+# plot_supercell_seasonal_fmap(start_day, end_day, path, r_disk, climate, zoom=False, save=True, addname="")
